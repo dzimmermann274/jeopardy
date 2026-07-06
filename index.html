@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeopardy!</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app"></div>
+<!-- ==========================================================
+     PPI Jeopardy — dual-window game.
+       index.html          = host control panel (laptop screen)
+       index.html#display  = game display (drag to the TV)
+     Load order matters: sample-game & data define content and
+     loading; core defines shared state/sync; control & display
+     define the two UIs; main boots whichever mode this window is.
+     ========================================================== -->
+<script src="js/sample-game.js"></script>
+<script src="js/data.js"></script>
+<script src="js/core.js"></script>
+<script src="js/control.js"></script>
+<script src="js/display.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

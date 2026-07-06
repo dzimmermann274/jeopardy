@@ -1,0 +1,173 @@
+/* ============================================================
+   PPI Jeopardy — all styles.
+   Control panel styles are scoped under body.control,
+   display (TV) styles under body.display.
+   ============================================================ */
+:root {
+  --board-blue: #060CE9;
+  --board-blue-dark: #04089F;
+  --value-gold: #FFCC00;
+  --panel-bg: #1e2130;
+  --panel-card: #2a2e42;
+  --panel-accent: #4a7dff;
+  --panel-text: #e8eaf2;
+  --panel-dim: #9aa1b9;
+  --good: #38b26c;
+  --bad: #d94f4f;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; }
+button { font-family: inherit; cursor: pointer; }
+input, select { font-family: inherit; }
+
+/* ============ CONTROL PANEL ============ */
+body.control { background: var(--panel-bg); color: var(--panel-text); min-height: 100vh; }
+.ctl-wrap { max-width: 1200px; margin: 0 auto; padding: 18px 22px 60px; }
+.ctl-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.ctl-header h1 { font-size: 22px; letter-spacing: 1px; }
+.ctl-header h1 span { color: var(--value-gold); }
+.ctl-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { background: var(--panel-card); color: var(--panel-text); border: 1px solid #3a3f58;
+       border-radius: 8px; padding: 9px 14px; font-size: 14px; transition: background .15s; }
+.btn:hover { background: #343954; }
+.btn.primary { background: var(--panel-accent); border-color: var(--panel-accent); color: #fff; font-weight: 600; }
+.btn.primary:hover { background: #3a6df0; }
+.btn.good { background: var(--good); border-color: var(--good); color: #fff; font-weight: 700; }
+.btn.bad { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 700; }
+.btn.gold { background: var(--value-gold); border-color: var(--value-gold); color: #333; font-weight: 700; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.card { background: var(--panel-card); border: 1px solid #3a3f58; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--panel-dim); margin-bottom: 12px; }
+.hint { color: var(--panel-dim); font-size: 13px; line-height: 1.5; }
+.field-row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.field-row input[type=text], .field-row input[type=number] {
+  flex: 1; min-width: 200px; background: #191c2b; color: var(--panel-text);
+  border: 1px solid #3a3f58; border-radius: 8px; padding: 9px 12px; font-size: 14px;
+}
+.field-row select {
+  background: #191c2b; color: var(--panel-text); border: 1px solid #3a3f58;
+  border-radius: 8px; padding: 9px 12px; font-size: 14px;
+}
+.field-row input.wager-input { max-width: 160px; flex: 0 1 160px; }
+.status-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--panel-dim);
+  background: #191c2b; border-radius: 999px; padding: 5px 12px; }
+.status-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+.status-pill .dot.on { background: var(--good); }
+
+/* mini board */
+.mini-board { display: grid; gap: 6px; }
+.mini-cat { background: var(--board-blue-dark); color: #fff; font-weight: 700; font-size: 12px;
+  text-transform: uppercase; text-align: center; border-radius: 6px; padding: 8px 4px;
+  display: flex; align-items: center; justify-content: center; min-height: 46px; line-height: 1.2; }
+.mini-tile { background: var(--board-blue); color: var(--value-gold); font-weight: 800; font-size: 17px;
+  border: none; border-radius: 6px; padding: 14px 4px; text-align: center; }
+.mini-tile:hover { background: #1a20f5; }
+.mini-tile.used { background: #23263a; color: #4a4e66; cursor: default; }
+.mini-tile.dd::after { content: "•"; color: #ff8888; margin-left: 4px; }
+
+/* teams */
+.teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.team-card { background: #191c2b; border: 1px solid #3a3f58; border-radius: 10px; padding: 12px; }
+.team-card .tname { font-weight: 700; font-size: 15px; margin-bottom: 4px; word-break: break-word; }
+.team-card .tscore { font-size: 26px; font-weight: 800; color: var(--value-gold); margin-bottom: 8px; }
+.team-card .tscore.neg { color: var(--bad); }
+.team-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* clue control */
+.clue-box { background: #191c2b; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+.clue-box .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--panel-dim); margin-bottom: 6px; }
+.clue-box .cluetext { font-size: 18px; line-height: 1.45; }
+.answer-hidden { background: #2d2437; border: 1px dashed #6b5a80; color: #b9a8ce; border-radius: 10px;
+  padding: 14px 16px; font-size: 14px; margin-bottom: 12px; }
+.answer-shown { background: #1d3226; border: 1px solid var(--good); border-radius: 10px;
+  padding: 14px 16px; font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+.award-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.award-row .aw-name { min-width: 140px; font-weight: 600; }
+.award-row input[type=number] { max-width: 150px; background: #191c2b; color: var(--panel-text);
+  border: 1px solid #3a3f58; border-radius: 8px; padding: 8px 12px; }
+
+.setup-note { background: #17301f; border: 1px solid #2c5e3f; border-radius: 10px; padding: 12px 14px;
+  font-size: 14px; line-height: 1.55; margin-top: 10px; }
+.setup-err { background: #331d1d; border: 1px solid #7a3535; border-radius: 10px; padding: 12px 14px;
+  font-size: 14px; line-height: 1.55; margin-top: 10px; }
+details { margin-top: 12px; }
+details summary { cursor: pointer; color: var(--panel-accent); font-size: 14px; }
+details .hint { margin-top: 8px; }
+code { background: #191c2b; padding: 2px 6px; border-radius: 5px; font-size: 13px; }
+table.tmpl { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+table.tmpl th, table.tmpl td { border: 1px solid #3a3f58; padding: 5px 10px; text-align: left; }
+table.tmpl th { background: #191c2b; }
+
+/* ============ DISPLAY SCREEN ============ */
+body.display { background: #000; color: #fff; overflow: hidden; user-select: none; cursor: default; }
+.disp-stage { position: fixed; inset: 0; display: flex; flex-direction: column; }
+.disp-view { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2vmin; }
+
+.brand { font-family: Impact, "Arial Black", sans-serif; letter-spacing: .02em; }
+
+/* welcome */
+.welcome-title { font-family: Impact, "Arial Black", sans-serif; font-size: 13vw; color: #fff;
+  text-shadow: .05em .05em 0 #000, 0 0 40px rgba(6,12,233,.9); -webkit-text-stroke: 2px #000; }
+.welcome-sub { font-size: 2.6vw; color: var(--value-gold); margin-top: 2vh; letter-spacing: .2em; text-transform: uppercase; }
+.disp-bluebg { background: radial-gradient(ellipse at center, #1a20f5 0%, var(--board-blue) 45%, #030661 100%); }
+
+/* board */
+.board { display: grid; gap: .55vmin; width: 100%; height: 100%; }
+.b-cat { background: var(--board-blue); display: flex; align-items: center; justify-content: center;
+  text-align: center; font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
+  color: #fff; font-size: 2.1vw; line-height: 1.1; padding: .5vmin; text-shadow: .06em .06em 0 #000;
+  border: .3vmin solid #000; overflow: hidden; }
+.b-tile { background: var(--board-blue); display: flex; align-items: center; justify-content: center;
+  font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); font-size: 4.2vw;
+  text-shadow: .06em .06em 0 #000; border: .3vmin solid #000; }
+.b-tile.used { color: transparent; text-shadow: none; }
+
+/* clue */
+.clue-full { background: var(--board-blue); position: fixed; inset: 0; display: flex;
+  padding: 6vmin; text-align: center; overflow-y: auto; }
+/* margin:auto centers when content fits and allows scrolling from the top when it doesn't */
+.clue-inner { margin: auto; display: flex; flex-direction: column; align-items: center; }
+.clue-cat { color: var(--value-gold); font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
+  font-size: 2.4vw; letter-spacing: .08em; margin-bottom: 4vh; text-shadow: .06em .06em 0 #000; }
+.clue-text { font-family: Georgia, "Times New Roman", serif; font-weight: 700; text-transform: uppercase;
+  color: #fff; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw; }
+.clue-answer { margin-top: 6vh; color: var(--value-gold); font-family: Georgia, serif; font-weight: 700;
+  text-transform: uppercase; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw;
+  animation: pop .4s ease; }
+@keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* daily double splash */
+.dd-splash { font-family: Impact, "Arial Black", sans-serif; font-size: 9vw; color: var(--value-gold);
+  text-shadow: .05em .05em 0 #000; animation: pop .5s ease; text-align: center; line-height: 1.05; }
+
+/* timer bar */
+.timerbar-wrap { position: fixed; left: 0; right: 0; bottom: 0; height: 2.2vh; background: rgba(0,0,0,.55); display: none; }
+.timerbar { height: 100%; background: var(--value-gold); width: 100%; transform-origin: left; }
+
+/* scores strip */
+.scores-strip { display: flex; justify-content: center; gap: 1.2vw; padding: 1.2vh 1vw 1.6vh; background: #000;
+  flex-wrap: wrap; }
+.score-pod { background: var(--board-blue); border: .3vmin solid #000; border-radius: .8vmin;
+  padding: .8vh 1.6vw; text-align: center; min-width: 11vw; }
+.score-pod .sp-name { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
+  color: #fff; font-size: 1.5vw; text-shadow: .06em .06em 0 #000; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 18vw; }
+.score-pod .sp-score { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
+  font-size: 2.4vw; text-shadow: .06em .06em 0 #000; }
+.score-pod .sp-score.neg { color: #ff7070; }
+
+/* big scores view */
+.bigscores { display: flex; gap: 3vw; flex-wrap: wrap; align-items: center; justify-content: center; }
+.bigscore-pod { background: var(--board-blue); border: .5vmin solid #000; border-radius: 1.5vmin;
+  padding: 3vh 3vw; text-align: center; }
+.bigscore-pod .sp-name { font-size: 2.6vw; }
+.bigscore-pod .sp-score { font-size: 5vw; }
+
+/* fullscreen hint button on display */
+.fs-btn { position: fixed; top: 14px; right: 14px; z-index: 50; background: rgba(0,0,0,.55); color: #fff;
+  border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 8px 14px; font-size: 14px;
+  opacity: 0; transition: opacity .3s; }
+body.display:hover .fs-btn { opacity: 1; }
+body.display.is-fullscreen .fs-btn { display: none; }
