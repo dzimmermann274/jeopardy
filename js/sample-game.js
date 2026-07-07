@@ -2,6 +2,7 @@
 /* Built-in sample game so the app can be tried without a Google Sheet. */
 const SAMPLE_GAME = {
   title: "Sample Game",
+  teams: [],
   rounds: [{
     name: "Jeopardy!",
     categories: [
@@ -13,7 +14,8 @@ const SAMPLE_GAME = {
         { value: 1000, clue: "This state's official nickname is \"The Equality State\".", answer: "Wyoming" },
       ]},
       { name: "Animal Kingdom", clues: [
-        { value: 200,  clue: "This black-and-white bear native to China mostly eats bamboo.", answer: "The giant panda" },
+        { value: 200,  clue: "PICTURE CLUE: This common household pet is shown on the screen.", answer: "A cat",
+          image: "https://upload.wikimedia.org/wikipedia/commons/1/15/Cat_August_2010-4.jpg" },
         { value: 400,  clue: "A group of lions is called this.", answer: "A pride" },
         { value: 600,  clue: "This is the only mammal capable of true sustained flight.", answer: "The bat" },
         { value: 800,  clue: "The heart of this tallest land animal can weigh 25 pounds.", answer: "The giraffe", dd: true },
@@ -45,7 +47,7 @@ const SAMPLE_GAME = {
         { value: 400,  clue: "A word that reads the same forward and backward, like \"kayak\".", answer: "A palindrome" },
         { value: 600,  clue: "\"Bookkeeper\" is unusual for having three consecutive sets of these.", answer: "Double letters" },
         { value: 800,  clue: "This is the only common English word ending in \"-mt\".", answer: "Dreamt" },
-        { value: 1000, clue: "The word \"alphabet\" comes from the first two letters of this alphabet.", answer: "The Greek alphabet (alpha and beta)" },
+        { value: 1000, clue: "HOST'S CHOICE: This answer isn't preset — the host types it live! (Try it: type anything on the control panel and release it to the TV.)", answer: "", unknown: true },
       ]},
     ],
   }],

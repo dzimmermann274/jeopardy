@@ -1,9 +1,27 @@
 "use strict";
 /* ============================================================
-   Data loading: Google Sheets fetch + CSV parsing + game building.
-   A game object looks like:
+   Data loading: Google Sheets fetch + workbook/CSV parsing.
+
+   PRIMARY FORMAT — the "Jeopardy Questions" workbook:
+     • every tab is ONE category, named by its tab name;
+     • tabs named like "READ ME"/"Instructions" or "Game Setup"
+       are not categories;
+     • each category tab has a header row containing "Question"
+       and "Answer"; data rows below hold Value | Question | Answer;
+     • a row whose question is blank produces NO tile, an empty
+       tab produces NO category — the game mirrors the sheet;
+     • a "Daily Double" label followed by a dollar amount marks
+       that level as the Daily Double;
+     • the Game Setup tab supplies the game title, team names,
+       players per team, and an optional Final Jeopardy.
+
+   LEGACY FORMAT (still supported): one tab with header row
+   Round | Category | Value | Clue | Answer | Daily Double.
+
+   A game object:
    { title, rounds: [{ name, categories: [{ name, clues: [{value, clue, answer, dd, used}] }] }],
-     final: { category, clue, answer } | null }
+     final: {category, clue, answer} | null,
+     teams: [{name, players: []}] }          // suggested teams from the sheet
    ============================================================ */
 
 function parseCSV(text) {
@@ -25,16 +43,240 @@ function parseCSV(text) {
   return rows;
 }
 
-/* Build a game object from spreadsheet rows.
-   Expected headers (case-insensitive, order-free, extra columns ignored):
-   Round | Category | Value | Clue (or Question) | Answer | Daily Double
-   Blank Round/Category cells inherit the value from the row above, so
-   spreadsheet "ditto" habits work.                                       */
+/* ---------------- workbook (tab-per-category) format ---------------- */
+
+/* Special-tab names are matched only at the START of the tab name (after any
+   emoji/punctuation) so a category named e.g. "Cooking Instructions" or
+   "Greek Gods & Attributes" is NOT swallowed as a special tab. */
+function isMetaTabName(n) { return /^\W*(read\s*me|instructions?\b)/iu.test(n.trim()); }
+function isSetupTabName(n) { return /^\W*(game\s*setup|game\s*attributes?|setup\b|attributes?\b)/iu.test(n.trim()); }
+function isQuestionBankTabName(n) { return /^\W*(question\s*bank|master\s*list)/iu.test(n.trim()); }
+function isImageBankTabName(n) { return /^\W*(image\s*bank|picture\s*bank)/iu.test(n.trim()); }
+
+/* Google Drive share links can't be used in <img> directly — convert them
+   to the direct-view host. Anything else passes through untouched. */
+function normalizeImageUrl(url) {
+  const m = String(url).match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:.*&)?id=)([-\w]{20,})/);
+  return m ? `https://lh3.googleusercontent.com/d/${m[1]}` : String(url).trim();
+}
+
+/* The Image Bank tab -> map of image ID -> direct URL.
+   The ID header and the link header must be DIFFERENT cells — otherwise the
+   tab's banner row ("...paste picture links... Image ID...") is mistaken for
+   the header and the whole bank parses empty. */
+function parseImageBank(ws) {
+  const rows = sheetRows(ws);
+  const map = {};
+  const headerIdx = rows.findIndex(r => {
+    const i = r.findIndex(c => /\bid\b/i.test(c));
+    return i !== -1 && r.some((c, j) => j !== i && /link|url/i.test(c));
+  });
+  if (headerIdx === -1) return map;
+  const header = rows[headerIdx];
+  const idCol = header.findIndex(c => /\bid\b/i.test(c));
+  const urlCol = header.findIndex((c, j) => j !== idCol && /link|url/i.test(c));
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const id = (rows[i][idCol] || "").trim();
+    const url = (rows[i][urlCol] || "").trim();
+    if (id && /^https?:\/\//i.test(url)) map[id] = normalizeImageUrl(url);
+  }
+  return map;
+}
+
+/* An image cell may hold a bank ID or a pasted URL. */
+function resolveImage(cellValue, imageMap) {
+  const v = String(cellValue || "").trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return normalizeImageUrl(v);
+  return imageMap[v] || "";
+}
+
+/* Formula error text from the category tabs ("⚠ ID not found") — never
+   show it as a question or answer. */
+function isNotFound(s) { return /id\s*not\s*found/i.test(s); }
+
+function sheetRows(ws) {
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false })
+    .map(r => r.map(c => String(c ?? "").trim()));
+}
+
+function parseMoney(s) {
+  const n = parseInt(String(s).replace(/[$,\s]/g, ""), 10);
+  return isNaN(n) ? 0 : n;
+}
+
+/* One category tab -> { name, clues, warnings } or null if it holds no questions. */
+function parseCategoryTab(tabName, ws, imageMap) {
+  const rows = sheetRows(ws);
+  // header row = a QUESTION column and an ANSWER column in two DIFFERENT
+  // cells. "Question ID" is the reference column, not the question itself,
+  // so a header counts as the question column only when it isn't ".. ID ..".
+  const isQuestionHeader = c => /question/i.test(c) && !/question\s*id/i.test(c);
+  const headerIdx = rows.findIndex(r => {
+    const qi = r.findIndex(isQuestionHeader);
+    return qi !== -1 && r.some((c, j) => j !== qi && /answer/i.test(c));
+  });
+  if (headerIdx === -1) return null;
+  const header = rows[headerIdx];
+  const qCol = header.findIndex(isQuestionHeader);
+  const aCol = header.findIndex(c => /answer/i.test(c));
+  const imgCol = header.findIndex(c => /image/i.test(c));
+  let vCol = header.findIndex(c => /value/i.test(c));
+  if (vCol === -1) vCol = 0;
+
+  const clues = [];
+  const warnings = [];
+  let ddValue = null;
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    const clue = (r[qCol] || "").trim();
+    // Daily Double marker row: a label-only row (no question text!) with a
+    // dollar amount after the label. A real clue that merely MENTIONS
+    // "daily double" must not be swallowed.
+    const ddCell = r.findIndex(c => /daily\s*double/i.test(c));
+    if (ddCell !== -1 && !clue) {
+      for (let j = ddCell + 1; j < r.length; j++) {
+        const n = parseMoney(r[j]);
+        if (n > 0) { ddValue = n; break; }
+      }
+      continue;
+    }
+    if (!clue) continue;                       // blank question -> no tile
+    const rowLabel = `"${tabName.trim()}" ${r[vCol] || ""}`;
+    if (isNotFound(clue)) {                    // formula couldn't find the bank ID
+      warnings.push(`${rowLabel}: that Question ID isn't in the 🗂 Question Bank — tile skipped.`);
+      continue;
+    }
+    const rawAnswer = (r[aCol] || "").trim();
+    let answer = rawAnswer;
+    if (isNotFound(rawAnswer)) {
+      warnings.push(`${rowLabel}: the answer couldn't be looked up in the 🗂 Question Bank — you'll type the answer live.`);
+      answer = "";
+    } else if (!rawAnswer) {
+      warnings.push(`${rowLabel}: no answer in the sheet — you'll type the answer live during the game.`);
+    }
+    // UNKNOWN (incl. variants like "Unknown?") or a missing answer both mean:
+    // the host types the answer live during the game.
+    const unknown = !answer || /^unknown\b/i.test(answer);
+    const imgRaw = imgCol !== -1 ? (r[imgCol] || "").trim() : "";
+    const image = resolveImage(imgRaw, imageMap);
+    if (imgRaw && !image) {
+      warnings.push(`${rowLabel}: Image ID "${imgRaw}" isn't in the 🖼 Image Bank — the picture won't show.`);
+    }
+    clues.push({
+      value: parseMoney(r[vCol]),
+      clue,
+      answer: unknown ? "" : answer,
+      unknown,
+      image,
+      dd: false,
+    });
+  }
+  if (!clues.length) return null;              // empty tab -> no category
+  clues.forEach((cl, idx) => { if (!cl.value) cl.value = (idx + 1) * 200; });
+  clues.sort((a, b) => a.value - b.value);
+  if (ddValue != null) {
+    const hit = clues.find(cl => cl.value === ddValue);
+    if (hit) hit.dd = true;
+  }
+  return { name: tabName.trim(), clues, warnings };
+}
+
+/* The Game Setup tab -> { title, teams, final } (all optional). */
+function parseSetupTab(ws) {
+  const rows = sheetRows(ws);
+  const out = { title: "", teams: [], final: null };
+
+  const findValue = (re) => {
+    for (const r of rows) {
+      const idx = r.findIndex(c => re.test(c));
+      if (idx !== -1) {
+        for (let j = idx + 1; j < r.length; j++) if (r[j]) return r[j];
+      }
+    }
+    return "";
+  };
+
+  out.title = findValue(/game\s*(title|name)/i);
+
+  const teamHeaderIdx = rows.findIndex(r => r.some(c => /team\s*name/i.test(c)));
+  if (teamHeaderIdx !== -1) {
+    const header = rows[teamHeaderIdx];
+    const nameCol = header.findIndex(c => /team\s*name/i.test(c));
+    const playerCol = header.findIndex(c => /player/i.test(c));
+    for (let i = teamHeaderIdx + 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.some(c => /final\s*jeopardy/i.test(c))) break;   // reached the Final section
+      const name = (r[nameCol] || "").trim();
+      if (!name) continue;
+      const players = playerCol !== -1
+        ? (r[playerCol] || "").split(/[,;]/).map(p => p.trim()).filter(Boolean)
+        : [];
+      out.teams.push({ name, players });
+    }
+  }
+
+  const fCat = findValue(/final\s*jeopardy\s*category/i);
+  const fClue = findValue(/final\s*jeopardy\s*(question|clue)/i);
+  const fAns = findValue(/final\s*jeopardy\s*answer/i);
+  if (fClue) {
+    // No/UNKNOWN answer -> the host types the final answer live.
+    const unknown = !fAns || /^unknown\b/i.test(fAns);
+    out.final = { category: fCat || "Final Jeopardy", clue: fClue, answer: unknown ? "" : fAns, unknown };
+  }
+  return out;
+}
+
+function buildGameFromWorkbook(wb) {
+  // Banks first: categories need the image map to resolve Image IDs.
+  let imageMap = {};
+  for (const name of wb.SheetNames) {
+    if (isImageBankTabName(name)) { imageMap = parseImageBank(wb.Sheets[name]); break; }
+  }
+
+  const categories = [];
+  const warnings = [];
+  let setup = null;
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    if (isMetaTabName(name) || isQuestionBankTabName(name) || isImageBankTabName(name)) continue;
+    if (isSetupTabName(name)) { if (!setup) setup = parseSetupTab(ws); continue; }
+    const cat = parseCategoryTab(name, ws, imageMap);
+    if (cat) {
+      warnings.push(...(cat.warnings || []));
+      delete cat.warnings;
+      categories.push(cat);
+    }
+  }
+
+  if (categories.length) {
+    return {
+      title: (setup && setup.title) || "Jeopardy!",
+      rounds: [{ name: "Jeopardy!", categories }],
+      final: (setup && setup.final) || null,
+      teams: (setup && setup.teams) || [],
+      warnings,
+    };
+  }
+
+  // No category tabs found — try the legacy row-list format on each tab.
+  for (const name of wb.SheetNames) {
+    const rows = sheetRows(wb.Sheets[name]);
+    if (!rows.length) continue;
+    const h = rows[0].map(c => c.toLowerCase());
+    if (h.some(c => c.startsWith("category")) && h.some(c => c.startsWith("clue") || c.startsWith("question")) && h.some(c => c.startsWith("answer"))) {
+      const game = buildGameFromRows(rows);
+      game.teams = [];
+      return game;
+    }
+  }
+  throw new Error("Couldn't find any questions in that sheet. Each category tab needs its Question column filled in (and the workbook needs at least one category tab with a question). If this isn't a copy of the “Jeopardy Questions” workbook, check that it matches the expected layout.");
+}
+
+/* ---------------- legacy row-list format ---------------- */
 function buildGameFromRows(rows) {
   if (!rows.length) throw new Error("The sheet appears to be empty.");
   const headers = rows[0].map(h => h.trim().toLowerCase());
-  // exact header match wins; only fall back to a prefix match for longer
-  // names so e.g. "Question ID" can't shadow a real "Clue" column.
   const col = (names) => {
     let idx = headers.findIndex(h => names.some(n => h === n));
     if (idx === -1) idx = headers.findIndex(h => names.some(n => n.length > 2 && h.startsWith(n)));
@@ -50,7 +292,7 @@ function buildGameFromRows(rows) {
     throw new Error("Couldn't find the required columns. The sheet needs header columns named Category, Clue (or Question), and Answer — plus optional Round, Value, and Daily Double columns.");
   }
 
-  const roundsMap = new Map();  // key -> Map(categoryName -> clues[])
+  const roundsMap = new Map();
   let final = null;
   let lastCat = "";
   let lastRound = "1";
@@ -64,8 +306,9 @@ function buildGameFromRows(rows) {
     if (!clue && !ans) continue;
     let roundRaw = cRound >= 0 ? String(r[cRound] ?? "").trim().toLowerCase() : "";
     if (!roundRaw) roundRaw = lastRound; else lastRound = roundRaw;
-    if (roundRaw === "f" || roundRaw.startsWith("final")) {   // Final Jeopardy row (first one wins)
-      if (!final) final = { category: cat || "Final Jeopardy", clue, answer: ans };
+    if (roundRaw === "f" || roundRaw.startsWith("final")) {
+      const fu = !ans || /^unknown\b/i.test(ans);
+      if (!final) final = { category: cat || "Final Jeopardy", clue, answer: fu ? "" : ans, unknown: fu };
       continue;
     }
     const rKey = roundRaw;
@@ -74,7 +317,8 @@ function buildGameFromRows(rows) {
     if (!cats.has(cat)) cats.set(cat, []);
     const valRaw = cVal >= 0 ? String(r[cVal] ?? "").replace(/[$,\s]/g, "") : "";
     const dd = cDD >= 0 ? /^(y|yes|true|x|1)$/i.test(String(r[cDD] ?? "").trim()) : false;
-    cats.get(cat).push({ value: valRaw ? parseInt(valRaw, 10) || 0 : 0, clue, answer: ans, dd });
+    const unknown = !ans || /^unknown\b/i.test(ans);
+    cats.get(cat).push({ value: valRaw ? parseInt(valRaw, 10) || 0 : 0, clue, answer: unknown ? "" : ans, unknown, dd });
   }
 
   const roundKeys = [...roundsMap.keys()].sort((a, b) => (parseInt(a) || 99) - (parseInt(b) || 99));
@@ -82,7 +326,6 @@ function buildGameFromRows(rows) {
   const rounds = roundKeys.map((key, ri) => {
     const cats = roundsMap.get(key);
     const categories = [...cats.entries()].map(([name, clues]) => {
-      // fill in missing values by position: 200/400/... doubled in round 2+
       const mult = (ri + 1) * 200;
       clues.forEach((cl, idx) => { if (!cl.value) cl.value = (idx + 1) * mult; });
       clues.sort((a, b) => a.value - b.value);
@@ -94,10 +337,11 @@ function buildGameFromRows(rows) {
     return { name: label, categories };
   });
   if (!rounds.length) throw new Error("The sheet only has a Final Jeopardy row — add regular question rows too.");
-  return { title: "Custom Game", rounds, final };
+  return { title: "Custom Game", rounds, final, teams: [] };
 }
 
-/* Extract a spreadsheet ID (and optional tab gid) from whatever gets pasted. */
+/* ---------------- fetching ---------------- */
+
 function parseSheetRef(input) {
   const s = input.trim();
   const idMatch = s.match(/\/d\/([a-zA-Z0-9-_]{20,})/) || s.match(/^([a-zA-Z0-9-_]{25,})$/);
@@ -106,16 +350,15 @@ function parseSheetRef(input) {
   return { id: idMatch[1], gid: gidMatch ? gidMatch[1] : null };
 }
 
-/* Fetch a CSV URL with a timeout; returns null on any failure
-   (network error, non-200, or an HTML page such as a login redirect). */
-async function fetchCsv(url, timeoutMs) {
+async function fetchWithTimeout(url, timeoutMs, asBinary) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const resp = await fetch(url, { signal: ctrl.signal });
     if (!resp.ok) return null;
+    if (asBinary) return await resp.arrayBuffer();
     const text = await resp.text();
-    if (/^\s*</.test(text)) return null;
+    if (/^\s*</.test(text)) return null;       // HTML login page, not data
     return text;
   } catch (e) {
     return null;
@@ -124,17 +367,29 @@ async function fetchCsv(url, timeoutMs) {
   }
 }
 
+const SHARING_ERROR = "Couldn't load the sheet. This usually means it isn't shared as “Anyone with the link – Viewer” — ask the question-writer to double-check Share settings. (If sharing is right, check the internet connection and the link itself.)";
+
 async function loadSheet(input) {
   const ref = parseSheetRef(input);
   if (!ref) throw new Error("That doesn't look like a Google Sheets link. Paste the full link from the browser address bar (it contains /spreadsheets/d/...).");
-  const gid = ref.gid ? `&gid=${ref.gid}` : "";
-  // Primary: the export endpoint — no type inference, so a Round column of
-  // mixed numbers and "Final" survives verbatim. Fallback: the gviz endpoint.
-  const exportUrl = `https://docs.google.com/spreadsheets/d/${ref.id}/export?format=csv${gid}`;
-  const gvizUrl = `https://docs.google.com/spreadsheets/d/${ref.id}/gviz/tq?tqx=out:csv${gid}`;
-  const text = (await fetchCsv(exportUrl, 20000)) ?? (await fetchCsv(gvizUrl, 20000));
-  if (text == null) {
-    throw new Error("Couldn't load the sheet. This usually means it isn't shared as “Anyone with the link – Viewer” — ask the question-writer to double-check Share settings. (If sharing is right, check the internet connection and the link itself.)");
+
+  // Primary: the whole workbook (every tab + tab names) in one request.
+  const buf = await fetchWithTimeout(`https://docs.google.com/spreadsheets/d/${ref.id}/export?format=xlsx`, 30000, true);
+  // A real xlsx is a zip and starts with "PK"; a private sheet serves an HTML
+  // login page instead — treat that as a sharing problem, not a parse error.
+  const looksLikeXlsx = buf && buf.byteLength > 4 &&
+    new Uint8Array(buf, 0, 2)[0] === 0x50 && new Uint8Array(buf, 0, 2)[1] === 0x4B;
+  if (looksLikeXlsx) {
+    let wb;
+    try { wb = XLSX.read(buf, { type: "array" }); }
+    catch (e) { throw new Error("Downloaded the sheet but couldn't read it as a spreadsheet — is the link really a Google Sheet?"); }
+    return buildGameFromWorkbook(wb);
   }
+
+  // Fallback: single-tab CSV endpoints (legacy sheets / odd permissions).
+  const gid = ref.gid ? `&gid=${ref.gid}` : "";
+  const text = (await fetchWithTimeout(`https://docs.google.com/spreadsheets/d/${ref.id}/export?format=csv${gid}`, 20000, false))
+            ?? (await fetchWithTimeout(`https://docs.google.com/spreadsheets/d/${ref.id}/gviz/tq?tqx=out:csv${gid}`, 20000, false));
+  if (text == null) throw new Error(SHARING_ERROR);
   return buildGameFromRows(parseCSV(text));
 }

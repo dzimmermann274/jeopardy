@@ -79,6 +79,11 @@ CHANNEL.onmessage = (ev) => {
     else if (msg.type === "control-active") {
       if (!otherControlDetected) { otherControlDetected = true; renderControl(); }
     }
+    else if (msg.type === "img-error") {
+      // the display couldn't load a clue picture — surface it to the host
+      window.__imgErrorSrc = msg.src;
+      renderControl();
+    }
   }
 };
 
