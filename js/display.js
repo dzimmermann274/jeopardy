@@ -79,12 +79,12 @@ function renderDisplay() {
       <div class="clue-cat">Final Jeopardy — The category is</div>
       <div class="clue-text" style="font-size:6vw">${esc(S.game.final.category)}</div></div></div>`;
   } else if (S.view === "final-clue") {
-    view = clueScreenHtml(S.game.final.category, S.game.final.clue, S.game.final.answer, S.finalRevealed, S.game.final.image, animateAnswer);
+    view = clueScreenHtml(S.game.final.category, S.game.final.clue, S.game.final.answer, S.finalRevealed, S.game.final.image, animateAnswer, S.game.final.replace);
   } else if (S.view === "clue" && S.active) {
     const cl = activeClue();
     if (cl) {
       const amount = S.dd && S.dd.wager != null ? S.dd.wager : cl.value;
-      view = clueScreenHtml(activeCatName() + " — " + money(amount), cl.clue, cl.answer, S.revealed, cl.image, animateAnswer);
+      view = clueScreenHtml(activeCatName() + " — " + money(amount), cl.clue, cl.answer, S.revealed, cl.image, animateAnswer, cl.replace);
     }
   }
   if (!view && r) {
@@ -213,17 +213,25 @@ function imgFail(img) {
   CHANNEL.postMessage({ type: "img-error", src });
 }
 
-function clueScreenHtml(catLabel, clue, answer, revealed, image, animate) {
+function clueScreenHtml(catLabel, clue, answer, revealed, image, animate, replace) {
+  // Clues flagged in the sheet ("Answer replaces question?") drop the question
+  // text once the answer is revealed so the answer fills the screen — but a
+  // photo, if any, always stays.
+  const hideQ = !!(replace && revealed);
   // Scale by total visible content so very long clues (and the revealed
   // answer, and a picture) still fit; .clue-full also scrolls as a last resort.
-  const len = clue.length + (revealed ? String(answer || "").length : 0) + (image ? 180 : 0);
+  const len = (hideQ ? 0 : clue.length) + (revealed ? String(answer || "").length : 0) + (image ? 180 : 0);
   // Bigger overall for accessibility; steps still shrink so long clues (and
   // image clues, which add ~180 to len) keep fitting the screen.
   const size = len > 600 ? "2.4vw" : len > 400 ? "3vw" : len > 260 ? "3.6vw" : len > 150 ? "4.4vw" : len > 80 ? "5.2vw" : "6.2vw";
-  const ansSize = len > 150 ? "3.6vw" : "4.6vw";
+  // When the answer has the screen to itself, let it be larger.
+  const ansLen = String(answer || "").length + (image ? 120 : 0);
+  const ansSize = hideQ
+    ? (ansLen > 320 ? "3.6vw" : ansLen > 180 ? "4.6vw" : ansLen > 90 ? "5.8vw" : "7vw")
+    : (len > 150 ? "3.6vw" : "4.6vw");
   return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""} ${image ? "has-image" : ""}">
     <div class="clue-cat">${esc(catLabel)}</div>
-    <div class="clue-text" style="font-size:${size}">${fmtText(clue)}</div>
+    ${hideQ ? "" : `<div class="clue-text" style="font-size:${size}">${fmtText(clue)}</div>`}
     ${image ? `<img class="clue-img" src="${esc(image)}" alt="" onload="fitClue()" onerror="imgFail(this)">` : ""}
     ${revealed ? `<div class="clue-answer ${animate ? "pop" : ""}" style="font-size:${ansSize}">${fmtText(answer)}</div>` : ""}
   </div></div>`;

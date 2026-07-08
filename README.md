@@ -19,7 +19,10 @@ The game **mirrors a copy of the "Jeopardy Questions" workbook** (template in
 - **🗂 Question Bank** tab — the master list: every question gets an ID number. An answer
   of **UNKNOWN** means no preset answer — the host types it live in the control panel and
   releases it to the TV (every question also has a subtle "type a different answer"
-  override).
+  override). The optional **"Answer replaces question?"** column: type **YES** to make that
+  answer fill the whole screen on reveal (the question disappears — a photo, if any, always
+  stays); blank = normal (question and answer show together). The game matches this flag to
+  each clue by its Question ID, so it needs no change to the category tabs.
 - **🖼 Image Bank** tab — picture links, each with an Image ID. Putting an Image ID next
   to a question shows the picture on the TV under the clue. Google Drive share links are
   converted automatically to direct-view URLs.

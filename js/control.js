@@ -392,7 +392,9 @@ function startTimerAudio(startedAt, elapsed, seconds) {
   try { a.currentTime = (elapsed > 0.2 && isFinite(a.duration)) ? Math.min(elapsed, a.duration) : 0; } catch (e) {}
   const p = a.play(); if (p && p.catch) p.catch(() => {});    // called within the click gesture -> allowed
   clearTimeout(audioExpiryTimer);
-  audioExpiryTimer = setTimeout(() => { if (audioTimerKey === startedAt) stopTimerAudio(); }, Math.max(0, (seconds - elapsed) * 1000));
+  // If the clock runs out with no host input, let the music play 2s longer
+  // before fading. (A host action — reveal/cancel/leave — still fades at once.)
+  audioExpiryTimer = setTimeout(() => { if (audioTimerKey === startedAt) stopTimerAudio(); }, Math.max(0, (seconds - elapsed + 2) * 1000));
 }
 
 function stopTimerAudio() {

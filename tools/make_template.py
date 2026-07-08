@@ -112,6 +112,7 @@ def make_instructions(wb):
         ("STEP 1 — WRITE YOUR QUESTIONS IN THE 🗂 QUESTION BANK", "section"),
         ("Put every question you come up with in the Question Bank tab, one per row — in any order. Each row has an ID number; that number is how you'll drop the question into a category later, so questions are easy to swap around.", "body"),
         ("Special answer: type UNKNOWN as the answer if there's no preset answer — the game host will type the real answer live during the game (great for crowd challenges and judgment calls).", "body"),
+        ("Optional “Answer replaces question?” column: type YES to make that answer fill the whole screen when it's revealed (the question disappears — but a photo, if any, always stays). Leave it blank for a normal clue where the question and answer show together.", "body"),
         ("", "body"),
         ("STEP 2 — (OPTIONAL) ADD PICTURES IN THE 🖼 IMAGE BANK", "section"),
         ("Paste image links in the Image Bank tab, one per row, each with an Image ID. Easiest source: upload the picture to Google Drive → right-click it → Share → \"Anyone with the link\" → Copy link → paste here. Regular image links from the web work too.", "body"),
@@ -185,9 +186,10 @@ def make_question_bank(wb):
     ws.column_dimensions["B"].width = 72
     ws.column_dimensions["C"].width = 42
     ws.column_dimensions["D"].width = 12
+    ws.column_dimensions["E"].width = 34
     ws.sheet_view.showGridLines = False
 
-    ws.merge_cells("A1:D1")
+    ws.merge_cells("A1:E1")
     label(ws, "A1",
           "🗂  QUESTION BANK — write ALL your questions here, one per row, in any order. "
           "Each row's ID number is how you drop the question into a category tab, so questions stay easy to swap.",
@@ -199,6 +201,7 @@ def make_question_bank(wb):
     label(ws, "B3", "QUESTION", F_HEADER, HEADER_FILL, CENTER)
     label(ws, "C3", "ANSWER — or type UNKNOWN to have the host type it live", F_HEADER, HEADER_FILL, CENTER)
     label(ws, "D3", "Image ID (optional)", F_HEADER, HEADER_FILL, CENTER)
+    label(ws, "E3", "Answer replaces question? Type YES to hide the question when the answer shows (photos always stay).", F_HEADER, HEADER_FILL, CENTER)
     ws.row_dimensions[3].height = 30
 
     for i in range(1, 61):
@@ -207,6 +210,7 @@ def make_question_bank(wb):
         entry(ws, f"B{r}", height=34)
         entry(ws, f"C{r}")
         entry(ws, f"D{r}", align=CENTER)
+        entry(ws, f"E{r}", align=CENTER)
 
 
 def make_image_bank(wb):
