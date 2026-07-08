@@ -166,10 +166,19 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
   width: 100%; min-height: 0; margin-top: 1.6vh; }
 .clue-img { max-width: 86vw; max-height: 64vh; object-fit: contain; flex: 0 1 auto; }
 .clue-inner.has-image .clue-imgs .clue-img { max-height: 100%; }   /* fill the flex-filled row */
-.clue-imgs.multi .clue-img { max-width: 46vw; }                    /* two pictures share the width */
+/* Two pictures share the width; cap their HEIGHT so the clue text stays big and
+   readable from a distance (a healthy balance — still large photos). */
+.clue-imgs.multi .clue-img { max-width: 46vw; max-height: 44vh; }
+.clue-inner.revealed .clue-imgs.multi .clue-img { max-height: 34vh; }
 /* once the answer is revealed it needs room below, so pictures shrink a bit
    (still large — Danny prefers big images even if text is tight) */
 .clue-inner.revealed .clue-imgs { max-height: 46vh; }
+/* "Photos full screen" — the current picture(s) blown up to fill the whole TV,
+   on black so they're most visible. Not the browser fullscreen; just a view. */
+.photo-zoom { position: fixed; inset: 0; background: #000; display: flex; align-items: center;
+  justify-content: center; gap: 1vw; padding: 1vmin; }
+.photo-zoom .pz-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.photo-zoom.multi .pz-img { max-width: 49.5%; }
 .clue-img-fail { margin-top: 4vh; background: rgba(0,0,0,.4); border: .3vmin dashed rgba(255,255,255,.5);
   border-radius: 1vmin; padding: 2vh 3vw; font-size: 2vw; color: #ffd7d7; }
 @keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -238,14 +247,20 @@ body.display.is-fullscreen .fs-prompt { display: none; }
 
 /* category intro reveal — a full-screen "here are today's categories" animation */
 .cat-intro { position: fixed; inset: 0; z-index: 70; overflow: hidden; display: flex;
-  align-items: center; justify-content: center; opacity: 1; transition: opacity .6s ease;
+  flex-direction: column; opacity: 1; transition: opacity .6s ease;
   background: radial-gradient(ellipse at center, #1a20f5 0%, var(--board-blue) 45%, #030661 100%); }
 .cat-intro.cat-intro-out { opacity: 0; }
 /* a slow gold glow sweeping behind the card for a little life */
-.cat-intro::before { content: ""; position: absolute; width: 140vmax; height: 140vmax;
+.cat-intro::before { content: ""; position: absolute; width: 140vmax; height: 140vmax; left: -20vmax; top: -20vmax;
   background: radial-gradient(circle, rgba(255,204,0,.10) 0%, rgba(255,204,0,0) 55%);
   animation: catGlow 6s ease-in-out infinite; }
-@keyframes catGlow { 0%,100% { transform: translate(-18%, -12%) scale(1); } 50% { transform: translate(18%, 12%) scale(1.15); } }
+@keyframes catGlow { 0%,100% { transform: translate(-8%, -6%) scale(1); } 50% { transform: translate(28%, 22%) scale(1.15); } }
+/* persistent top banner so it's always clear the categories are cycling */
+.cat-intro-banner { position: relative; flex: 0 0 auto; text-align: center; font-family: Impact, "Arial Black", sans-serif;
+  text-transform: uppercase; letter-spacing: .32em; color: var(--value-gold); text-shadow: .05em .05em 0 #000;
+  font-size: 0; padding: 0; opacity: 0; transition: opacity .45s ease; }
+.cat-intro.show-banner .cat-intro-banner { font-size: 3.6vw; padding: 5vh 2vw 0; opacity: 1; }
+.cat-intro-slot { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; }
 .cat-intro-card { position: relative; text-align: center; max-width: 94vw; padding: 0 3vw;
   animation: catCard var(--dwell, 1750ms) cubic-bezier(.2,.75,.2,1) both; }
 .cat-intro-count { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;

@@ -79,12 +79,19 @@ function renderDisplay() {
       <div class="clue-cat">Final Jeopardy — The category is</div>
       <div class="clue-text" style="font-size:6vw">${esc(S.game.final.category)}</div></div></div>`;
   } else if (S.view === "final-clue") {
-    view = clueScreenHtml(S.game.final.category, S.game.final.clue, S.game.final.answer, S.finalRevealed, S.game.final.image, animateAnswer, S.game.final.replace);
+    const f = S.game.final;
+    const fimgs = currentClueImages(f, S.finalRevealed);
+    view = (S.photoZoom && fimgs.length)
+      ? photoZoomHtml(fimgs)
+      : clueScreenHtml(f.category, f.clue, f.answer, S.finalRevealed, fimgs, animateAnswer, f.replace);
   } else if (S.view === "clue" && S.active) {
     const cl = activeClue();
     if (cl) {
       const amount = S.dd && S.dd.wager != null ? S.dd.wager : cl.value;
-      view = clueScreenHtml(activeCatName() + " — " + money(amount), cl.clue, cl.answer, S.revealed, cl.image, animateAnswer, cl.replace);
+      const imgs = currentClueImages(cl, S.revealed);   // answer images once revealed (if the sheet split them with THEN)
+      view = (S.photoZoom && imgs.length)
+        ? photoZoomHtml(imgs)                            // blown up to fill the TV (Task: photos full screen)
+        : clueScreenHtml(activeCatName() + " — " + money(amount), cl.clue, cl.answer, S.revealed, imgs, animateAnswer, cl.replace);
     }
   }
   if (!view && r) {
@@ -189,9 +196,13 @@ function playCategoryIntro() {
   const cats = r.categories.map(c => c.name);
   const ov = document.createElement("div");
   ov.id = "catIntro"; ov.className = "cat-intro";
+  // Persistent top banner + a slot the cards shuffle through. The banner stays
+  // put while categories cycle, so it's always clear what's being shown.
+  ov.innerHTML = `<div class="cat-intro-banner">CATEGORIES</div><div class="cat-intro-slot"></div>`;
   document.body.appendChild(ov);
+  const slot = ov.querySelector(".cat-intro-slot");
 
-  const TITLE_MS = 3000, CAT_MS = 1750, OUT_MS = 700;
+  const TITLE_MS = 3000, CAT_MS = 2000, OUT_MS = 700;
   const steps = [{ kind: "title" }].concat(cats.map((name, i) => ({ kind: "cat", name, idx: i + 1, total: cats.length })));
   let i = 0;
   const step = () => {
@@ -202,14 +213,15 @@ function playCategoryIntro() {
     }
     const s = steps[i]; i++;
     const dwell = s.kind === "title" ? TITLE_MS : CAT_MS;
+    ov.classList.toggle("show-banner", s.kind === "cat");   // banner only while cycling categories, not on the title
     if (s.kind === "title") {
-      ov.innerHTML = `<div class="cat-intro-card title" style="--dwell:${dwell}ms">
+      slot.innerHTML = `<div class="cat-intro-card title" style="--dwell:${dwell}ms">
         <div class="cat-intro-count">Here are today's</div>
         <div class="cat-intro-name" style="font-size:12vw">CATEGORIES</div></div>`;
     } else {
       const n = String(s.name || "").length;
       const size = n > 30 ? "4.4vw" : n > 22 ? "5.4vw" : n > 14 ? "7vw" : "8.6vw";
-      ov.innerHTML = `<div class="cat-intro-card" style="--dwell:${dwell}ms">
+      slot.innerHTML = `<div class="cat-intro-card" style="--dwell:${dwell}ms">
         <div class="cat-intro-count">${s.idx} of ${s.total}</div>
         <div class="cat-intro-name" style="font-size:${size}">${fmtText(String(s.name || "").toUpperCase())}</div></div>`;
     }
@@ -240,9 +252,15 @@ function fitClue() {
   // Keep a little breathing room at the bottom so text never hugs the edge
   // (the top already has room). Text lifts up into that space as it shrinks.
   const bottomGap = Math.max(2, window.innerHeight * 0.035);
+  let lastBot = Infinity;
   while (guard++ < 100) {
     const b = bounds();
     if (b.top >= 2 && b.bot <= window.innerHeight - bottomGap) break;   // on screen, off the bottom edge
+    // If shrinking the text stopped lowering the content's bottom, an image is
+    // flex-filling the freed space — shrinking further only makes text tiny for
+    // nothing. Stop and keep the text big (the picture absorbs the overflow).
+    if (b.bot > lastBot - 0.5) break;
+    lastBot = b.bot;
     let shrunk = false;
     for (const el of els) {
       const m = (el.style.fontSize || "").match(/([\d.]+)vw/);
@@ -258,6 +276,14 @@ function imgFail(img) {
   const src = img.src;
   img.outerHTML = `<div class="clue-img-fail">⚠️ Picture couldn't load</div>`;
   CHANNEL.postMessage({ type: "img-error", src });
+}
+
+/* Photo(s) blown up to fill the whole TV — the host's "Photos full screen"
+   toggle. Purely a game view; it doesn't touch the browser fullscreen mode.
+   Toggling it off returns to the clue exactly as it was. */
+function photoZoomHtml(imgs) {
+  return `<div class="photo-zoom${imgs.length > 1 ? " multi" : ""}">
+    ${imgs.map(u => `<img class="pz-img" src="${esc(u)}" alt="" onerror="imgFail(this)">`).join("")}</div>`;
 }
 
 function clueScreenHtml(catLabel, clue, answer, revealed, image, animate, replace) {

@@ -26,7 +26,10 @@ The game **mirrors a copy of the "Jeopardy Questions" workbook** (template in
 - **🖼 Image Bank** tab — picture links, each with an Image ID. Putting an Image ID next
   to a question shows the picture on the TV under the clue. **Two Image IDs separated by a
   comma (e.g. `3, 7`) show two pictures side by side** on the same slide (a pasted URL or a
-  mix works too). Google Drive share links are converted automatically to direct-view URLs.
+  mix works too). To show **different pictures once the answer is revealed**, write the
+  question image(s), then **`THEN`** (caps), then the answer image(s) — e.g. `6, 5THEN7`
+  puts 6 & 5 on the question and 7 on the answer (each side can be one, two, or none).
+  Google Drive share links are converted automatically to direct-view URLs.
 - **Six category tabs** — each tab is ONE category; **the tab's name is the category
   title** (writers rename the tab). Writers type just a Question ID next to each dollar
   amount and the question/answer auto-fill via VLOOKUP (typing directly also works), plus
