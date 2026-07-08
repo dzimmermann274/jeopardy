@@ -20,19 +20,44 @@ let finalWagerDrafts = null;              // array of strings, one per team
 let liveAnswerDraft = "";                 // host-typed answer (UNKNOWN questions / overrides)
 let liveAnswerOpen = false;               // keep the override <details> open across re-renders
 
-/* Open (or reuse) the single display window. `features` is a window.open
-   feature string; the default is the classic small popup on the main screen.
-   `wantFs` opens it with the fullscreen-intent flag so it enters true fullscreen
-   mode (see armAutoFullscreen in display.js). */
-function openDisplayWindow(features, wantFs) {
-  const hash = wantFs ? "#display&fs=1" : "#display";
-  displayWin = window.open(location.pathname + hash, "ppiJeopardyDisplay",
-    features || "width=1280,height=720");
-  try { if (displayWin) displayWin.focus(); } catch (e) {}   // focus it so the first key/click there triggers fullscreen
+/* Open (or reuse) the single display window. `geom` is an optional
+   {left,top,width,height}; without it, a default 1280x720 popup. `wantFs` sets
+   the fullscreen-intent flag so the window enters true fullscreen mode.
+
+   The window's mode (fullscreen intent) and opening stage (black/title/game)
+   ride in the URL hash so a freshly opened window boots straight into them —
+   no flash of the game before a black deploy, no missed fullscreen. Reusing an
+   existing window by name only changes the hash (no reload) and ignores the
+   size/position, so we reposition it and force a reload to re-run that boot. */
+function openDisplayWindow(geom, wantFs) {
+  const reuse = displayLooksOpen();
+  const feat = (geom && geom.left != null)
+    ? `left=${geom.left},top=${geom.top},width=${geom.width},height=${geom.height}`
+    : `width=${(geom && geom.width) || 1280},height=${(geom && geom.height) || 720}`;
+  const stage = S.stage || "game";
+  const hash = "#display" + (wantFs ? "&fs=1" : "") + (stage !== "game" ? "&stage=" + stage : "");
+  const url = location.pathname + hash;
+  displayWin = window.open(url, "ppiJeopardyDisplay", feat);
+  if (displayWin) {
+    if (reuse) {
+      // Reused window: it only did a fragment change (no reload) and ignored the
+      // size/position. Reposition it, point it at the new URL, then reload so the
+      // boot code (fullscreen arming + the opening stage) actually runs again.
+      try { if (geom && geom.left != null) { displayWin.moveTo(geom.left, geom.top); displayWin.resizeTo(geom.width, geom.height); } } catch (e) {}
+      try { displayWin.location.href = url; displayWin.location.reload(); } catch (e) {}
+    }
+    try { displayWin.focus(); } catch (e) {}               // focus so the first key/click there triggers fullscreen
+  }
   setTimeout(send, 600);  // give it a moment, then push state (it also says hello)
   return displayWin;
 }
 function openDisplay() { return openDisplayWindow(); }
+
+function fillGeom(scr) { return { left: scr.availLeft, top: scr.availTop, width: scr.availWidth, height: scr.availHeight }; }
+function centeredGeom(scr, w, h) {
+  w = Math.min(w, scr.availWidth); h = Math.min(h, scr.availHeight);
+  return { left: Math.round(scr.availLeft + (scr.availWidth - w) / 2), top: Math.round(scr.availTop + (scr.availHeight - h) / 2), width: w, height: h };
+}
 
 function displayLooksOpen() { return displayWin && !displayWin.closed; }
 
@@ -81,14 +106,6 @@ function externalScreenOf(sd) {
       || sd.screens.find(s => s !== cur)
       || null;
 }
-function fillFeatures(scr)      { return `left=${scr.availLeft},top=${scr.availTop},width=${scr.availWidth},height=${scr.availHeight}`; }
-function centeredFeatures(scr, w, h) {
-  w = Math.min(w, scr.availWidth); h = Math.min(h, scr.availHeight);
-  const left = Math.round(scr.availLeft + (scr.availWidth - w) / 2);
-  const top  = Math.round(scr.availTop  + (scr.availHeight - h) / 2);
-  return `left=${left},top=${top},width=${w},height=${h}`;
-}
-
 /* Set the display curtain (black / title / game) and broadcast it. Collect any
    typed team names first so re-rendering the setup screen never wipes them. */
 function setStage(stage) { collectTeamNames(); update(() => { S.stage = stage; }); if (screensOv) renderScreensDialog(); }
@@ -118,12 +135,12 @@ async function deployExternal({ fullscreen, stage }) {
   const scr = externalScreenOf(sd);
   if (!scr) { if (screensOv) renderScreensDialog(); return; }
   collectTeamNames();
-  update(() => { S.stage = stage || "game"; });   // curtain set before the window exists; it gets it via the hello handshake
+  update(() => { S.stage = stage || "game"; });   // set the opening stage before opening; it rides in the URL hash
   // A fullscreen deploy fills the external screen AND asks the window to enter
   // true fullscreen mode: instantly if this site is allow-listed for automatic
   // fullscreen, otherwise on the first click/key in that window (it shows a
   // prompt). Seamless with stage:"black" — only black is on screen meanwhile.
-  openDisplayWindow(fullscreen ? fillFeatures(scr) : centeredFeatures(scr, 1280, 720), fullscreen);
+  openDisplayWindow(fullscreen ? fillGeom(scr) : centeredGeom(scr, 1280, 720), fullscreen);
   if (screensOv) renderScreensDialog();
 }
 
@@ -140,14 +157,13 @@ function deployMain() {
 function deploySplitMain() {
   collectTeamNames();
   update(() => { S.stage = "game"; });
-  let feat = "width=800,height=900";
+  let geom = { width: 800, height: 900 };
   try {
     const sc = window.screen;
     const w = Math.floor((sc.availWidth || 1440) / 2), h = sc.availHeight || 900;
-    const left = (sc.availLeft || 0) + w, top = (sc.availTop || 0);
-    feat = `left=${left},top=${top},width=${w},height=${h}`;
+    geom = { left: (sc.availLeft || 0) + w, top: (sc.availTop || 0), width: w, height: h };
   } catch (e) { /* use the fallback size */ }
-  openDisplayWindow(feat);
+  openDisplayWindow(geom);
   if (screensOv) renderScreensDialog();
 }
 
@@ -646,17 +662,26 @@ function renderPlay() {
     app.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
       const [c, row] = b.dataset.pick.split(":").map(Number);
       const clue = r.categories[c].clues[row];
-      ddDraft = { team: 0, wager: "" };
-      liveAnswerDraft = ""; liveAnswerOpen = false;
-      window.__imgErrorSrc = null;
-      update(() => {
-        S.active = { cat: c, row };
-        S.revealed = false;
-        S.awarded = {};
-        S.timer = null;
-        if (clue.dd) { S.view = "dd"; S.dd = { teamIdx: null, wager: null }; }
-        else { S.view = "clue"; S.dd = null; }
-      });
+      const openClue = () => {
+        ddDraft = { team: 0, wager: "" };
+        liveAnswerDraft = ""; liveAnswerOpen = false;
+        window.__imgErrorSrc = null;
+        update(() => {
+          S.active = { cat: c, row };
+          S.revealed = false;
+          S.awarded = {};
+          S.timer = null;
+          if (clue.dd) { S.view = "dd"; S.dd = { teamIdx: null, wager: null }; }
+          else { S.view = "clue"; S.dd = null; }
+        });
+      };
+      // Used clues stay clickable, but warn first so one isn't re-shown by accident.
+      if (clue.used) {
+        customConfirm("This question has already been shown. Show it again anyway?",
+          { okText: "Show it again", cancelText: "Cancel" }).then(ok => { if (ok) openClue(); });
+      } else {
+        openClue();
+      }
     });
     const bReveal = document.getElementById("btnReveal");
     if (bReveal) bReveal.onclick = () => update(() => { S.revealed = true; S.timer = null; });
@@ -800,8 +825,9 @@ function boardControlHtml(r) {
       const idx = clueIndexAt(r.categories[c], row.value, row.occ);
       if (idx === -1) { cells += `<div class="mini-tile gap"></div>`; continue; }
       const clue = r.categories[c].clues[idx];
+      // Used tiles stay clickable (re-show with a warning) — no `disabled`.
       cells += `<button class="mini-tile ${clue.used ? "used" : ""} ${clue.dd && !clue.used ? "dd" : ""}"
-        ${clue.used ? "disabled" : ""} data-pick="${c}:${idx}">$${clue.value}</button>`;
+        ${clue.used ? `title="Already shown — click to show again"` : ""} data-pick="${c}:${idx}">$${clue.value}</button>`;
     }
   }
   return `

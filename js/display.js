@@ -120,7 +120,7 @@ function renderDisplay() {
         </div>`).join("")}</div>` : ""}
     </div>
     <button class="fs-btn" id="btnFS">⛶ Fullscreen (F)</button>
-    ${wantFs && !fsElement() ? `<div class="fs-prompt">▶ Press any key or click<br>to go full screen</div>` : ""}
+    ${wantFs && !fsElement() ? `<div class="fs-prompt">▶ Click this screen<br>(or press any key)<br>for true full screen</div>` : ""}
     <div class="timerbar-wrap" id="timerWrap"><div class="timerbar" id="timerBar"></div></div>`;
 
   document.getElementById("btnFS").onclick = goFullscreen;
@@ -132,25 +132,46 @@ function renderDisplay() {
 }
 
 /* The curtain is a persistent overlay (kept OUTSIDE #app, which is rebuilt on
-   every render) so its opacity can transition smoothly — the fade-to-black /
-   fade-to-title / fade-back-to-game failsafes. Driven purely by S.stage:
-   the control panel sets it and broadcasts, the display just reacts.
-   Content is only swapped when the stage changes, so a re-render mid-fade
-   (e.g. the host edits a score while the curtain is up) never restarts it. */
+   every render) so it can transition smoothly — the fade-to-black /
+   fade-to-title / fade-back-to-game failsafes. Driven purely by S.stage: the
+   control panel sets it and broadcasts, the display just reacts.
+
+   Two stacked layers (title beneath, black on top) each fade their own opacity,
+   so a fade TO black is ALWAYS smooth (black fades in over whatever's showing).
+   The one exception the host asked for: black -> title is an instant cut. */
 function renderCurtain() {
   const stage = S.stage || "game";
   let el = document.getElementById("dispCurtain");
+  let firstTime = false;
   if (!el) {
     el = document.createElement("div");
     el.id = "dispCurtain";
     el.className = "disp-curtain";
+    el.innerHTML = `<div class="curtain-title"></div><div class="curtain-black"></div>`;
     document.body.appendChild(el);
+    firstTime = true;
   }
-  if (el.dataset.stage !== stage) {
-    el.dataset.stage = stage;
-    el.innerHTML = stage === "title" ? welcomeHtml() : "";
+  const titleEl = el.querySelector(".curtain-title");
+  const blackEl = el.querySelector(".curtain-black");
+  const prev = el.dataset.stage || "game";
+  if (stage === prev && !firstTime) return;          // no change -> don't restart a transition
+  el.dataset.stage = stage;
+  if (stage === "title") titleEl.innerHTML = welcomeHtml();
+  // Everything fades (0.6s) EXCEPT: the very first paint (so a black deploy is a
+  // clean slate, no fade-in over the game) and black -> title (an instant jump).
+  const instant = firstTime || (prev === "black" && stage === "title");
+  setCurtainLayer(titleEl, stage === "title" ? 1 : 0, instant);
+  setCurtainLayer(blackEl, stage === "black" ? 1 : 0, instant);
+}
+function setCurtainLayer(elem, target, instant) {
+  if (instant) {
+    elem.style.transition = "none";
+    elem.style.opacity = String(target);
+    void elem.offsetWidth;                           // reflow so "none" applies before we restore it
+    elem.style.transition = "";
+  } else {
+    elem.style.opacity = String(target);
   }
-  el.classList.toggle("open", stage !== "game");   // opacity 1 when a curtain is up
 }
 
 /* Safety net so long text is never cut off: after layout, if the clue/answer

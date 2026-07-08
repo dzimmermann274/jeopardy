@@ -7,6 +7,11 @@
 
 if (IS_DISPLAY) {
   document.title = "Jeopardy — Display";
+  // The control panel encodes the opening stage in the URL (e.g. #display&stage=black)
+  // so the very first paint is already the curtain it should be — no flash of the
+  // game before a black deploy. The state broadcast that follows keeps it in sync.
+  const stageMatch = location.hash.match(/[?&]stage=([a-z]+)/);
+  if (stageMatch) S.stage = stageMatch[1];
   renderDisplay();
   CHANNEL.postMessage({ type: "hello" });   // ask the control window for current state
   document.addEventListener("keydown", (e) => {

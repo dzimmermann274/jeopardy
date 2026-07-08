@@ -64,7 +64,8 @@ body.control { background: var(--panel-bg); color: var(--panel-text); min-height
 .mini-tile { background: var(--board-blue); color: var(--value-gold); font-weight: 800; font-size: 17px;
   border: none; border-radius: 6px; padding: 14px 4px; text-align: center; }
 .mini-tile:hover { background: #1a20f5; }
-.mini-tile.used { background: #23263a; color: #4a4e66; cursor: default; }
+.mini-tile.used { background: #23263a; color: #4a4e66; cursor: pointer; }
+.mini-tile.used:hover { background: #2c3048; color: #7b82a3; }   /* stays muted (not the bright active-tile hover) so it still reads as "used" */
 .mini-tile.gap { background: transparent; border: 1px dashed #33374e; cursor: default; }
 .mini-tile.dd::after { content: "•"; color: #ff8888; margin-left: 4px; }
 
@@ -222,10 +223,13 @@ body.display.is-fullscreen .fs-prompt { display: none; }
    everything (kept outside #app so it survives re-renders), driven by S.stage,
    so its opacity transitions smoothly. z-index sits below the ⛶ button so the
    host can still click it to go borderless while the curtain is up. */
-.disp-curtain { position: fixed; inset: 0; z-index: 40; display: flex; background: #000;
-  opacity: 0; pointer-events: none; transition: opacity .6s ease; }
-.disp-curtain.open { opacity: 1; }
-.disp-curtain .disp-view { flex: 1; }
+.disp-curtain { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+/* two stacked layers; black is declared last so it sits on top of the title */
+.disp-curtain .curtain-title, .disp-curtain .curtain-black {
+  position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease; }
+.disp-curtain .curtain-black { background: #000; }
+.disp-curtain .curtain-title { display: flex; }
+.disp-curtain .curtain-title .disp-view { flex: 1; }
 
 /* winner screen (display/TV) — same look as the score screen, with a champion banner */
 .winner-banner { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
