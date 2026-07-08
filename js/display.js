@@ -125,6 +125,7 @@ function renderDisplay() {
 
   document.getElementById("btnFS").onclick = goFullscreen;
   runTimerBar();
+  syncTimerAudio();
   renderCurtain();
   fitClue();                          // immediate best-effort
   requestAnimationFrame(fitClue);     // correct once layout/fonts have settled
@@ -244,9 +245,78 @@ function runTimerBar() {
     bar.style.transform = `scaleX(${frac})`;
     bar.style.background = frac < .25 ? "#ff5555" : "var(--value-gold)";
     if (frac > 0) timerRAF = requestAnimationFrame(tick);
-    else wrap.style.display = "none";   // time's up — don't leave a dead strip on the TV
+    else { wrap.style.display = "none"; stopTimerAudio(); }   // time's up — hide the bar and fade the music
   };
   tick();
+}
+
+/* ---------------- timer music (the 30-second "think" cue) ----------------
+   The music is married to the timer: it plays when the countdown starts and
+   fades out — never a hard cut — the instant the timer is cancelled, the answer
+   is revealed, the view changes, or time runs out. Driven by S.timer, so the
+   control panel's existing timer actions already trigger it. */
+let timerAudio = null;
+let audioPrimed = false;      // browsers need a gesture in THIS window before sound plays
+let audioTimerKey = null;     // startedAt of the timer whose music is currently playing
+let audioFadeRAF = null;
+
+function ensureTimerAudio() {
+  if (!timerAudio) { timerAudio = new Audio("audio/think.mp3"); timerAudio.preload = "auto"; }
+  return timerAudio;
+}
+
+/* Unlock sound on the first user gesture in the display window (called from main.js). */
+function primeTimerAudio() {
+  if (audioPrimed) return;
+  audioPrimed = true;                         // the gesture we're inside unlocks audio
+  const a = ensureTimerAudio();
+  const restore = a.muted; a.muted = true;
+  const settle = () => { a.pause(); try { a.currentTime = 0; } catch (e) {} a.muted = restore; };
+  const p = a.play();
+  if (p && p.then) p.then(settle).catch(() => { a.muted = restore; audioPrimed = false; });
+  else settle();
+}
+
+function cancelAudioFade() { if (audioFadeRAF) { cancelAnimationFrame(audioFadeRAF); audioFadeRAF = null; } }
+
+/* Start the music for the timer that began at `startedAt` (once per timer),
+   synced to however much time has already elapsed. */
+function startTimerAudio(startedAt, elapsed) {
+  if (audioTimerKey === startedAt) return;    // already playing this timer
+  audioTimerKey = startedAt;
+  const a = ensureTimerAudio();
+  cancelAudioFade();
+  a.volume = 1;
+  try { a.currentTime = (elapsed > 0.2 && isFinite(a.duration)) ? Math.min(elapsed, a.duration) : 0; } catch (e) {}
+  if (audioPrimed) { const p = a.play(); if (p && p.catch) p.catch(() => {}); }
+}
+
+/* Stop with a smooth fade (never a hard cut). Idempotent. */
+function stopTimerAudio() {
+  if (audioTimerKey === null) return;
+  audioTimerKey = null;
+  const a = timerAudio; if (!a) return;
+  cancelAudioFade();
+  const startVol = a.volume, t0 = Date.now(), dur = 700;
+  const step = () => {
+    const k = Math.min(1, (Date.now() - t0) / dur);
+    a.volume = startVol * (1 - k);
+    if (k < 1) audioFadeRAF = requestAnimationFrame(step);
+    else { a.pause(); try { a.currentTime = 0; } catch (e) {} a.volume = 1; audioFadeRAF = null; }
+  };
+  step();
+}
+
+/* Marry the music to the timer — play while the countdown is running and
+   visible, fade out otherwise. Called every render, so any state change that
+   stops the timer (cancel / reveal / view change) fades the music. */
+function syncTimerAudio() {
+  const running = S.timer && S.view !== "winner" && S.view !== "bigscores";
+  if (running && (Date.now() - S.timer.startedAt) / 1000 < S.timer.seconds) {
+    startTimerAudio(S.timer.startedAt, (Date.now() - S.timer.startedAt) / 1000);
+  } else {
+    stopTimerAudio();
+  }
 }
 
 /* Toggle — wired to the F key and the ⛶ button. */
