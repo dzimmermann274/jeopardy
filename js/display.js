@@ -30,12 +30,15 @@ function renderDisplay() {
 
   if (S.phase === "setup" || !S.game || S.view === "welcome") {
     const title = (S.game && S.game.title) || "Jeopardy!";
+    const subtitle = (S.game && S.game.subtitle) || "";
     const size = title.length > 24 ? "6vw" : title.length > 13 ? "9vw" : "13vw";
-    view = `<div class="disp-view disp-bluebg"><div class="welcome-title" style="font-size:${size}">${fmtText(title.toUpperCase())}</div>
+    view = `<div class="disp-view disp-bluebg">
+      ${subtitle ? `<div class="welcome-pretitle">${fmtText(subtitle.toUpperCase())}</div>` : ""}
+      <div class="welcome-title" style="font-size:${size}">${fmtText(title.toUpperCase())}</div>
       <div class="welcome-sub">Get ready to play</div></div>`;
   } else if (S.view === "bigscores") {
     view = `<div class="disp-view">
-      <div class="brand" style="font-size:4vw;color:var(--value-gold);margin-bottom:5vh;text-shadow:.06em .06em 0 #000">SCORES</div>
+      <div class="brand" style="font-size:4vw;color:var(--value-gold);margin-bottom:3.5vh;text-shadow:.06em .06em 0 #000">CURRENT SCORES</div>
       <div class="bigscores">
         ${[...S.teams].sort((a, b) => b.score - a.score).map(t => `
           <div class="bigscore-pod score-pod">
@@ -49,11 +52,11 @@ function renderDisplay() {
     const champs = winnersOf(S.teams);
     const tie = champs.length > 1;
     const topScore = champs.length ? champs[0].score : 0;
-    view = `<div class="disp-view">
+    view = `<div class="disp-view winner-view">
       <div class="winner-banner ${animateWin ? "pop" : ""}">${tie ? "IT'S A TIE!" : "WINNER"}</div>
       <div class="winner-name">${champs.map(t => esc(t.name)).join(" &nbsp;&amp;&nbsp; ")}</div>
       <div class="winner-score">${money(topScore)}</div>
-      <div class="bigscores" style="margin-top:3vh">
+      <div class="bigscores">
         ${sorted.map(t => `
           <div class="bigscore-pod score-pod ${t.score === topScore ? "is-winner" : ""}">
             <div class="sp-name">${esc(t.name)}</div>
@@ -127,12 +130,15 @@ function clueScreenHtml(catLabel, clue, answer, revealed, image, animate) {
   // Scale by total visible content so very long clues (and the revealed
   // answer, and a picture) still fit; .clue-full also scrolls as a last resort.
   const len = clue.length + (revealed ? String(answer || "").length : 0) + (image ? 180 : 0);
-  const size = len > 600 ? "2vw" : len > 400 ? "2.5vw" : len > 260 ? "3vw" : len > 150 ? "3.8vw" : len > 80 ? "4.6vw" : "5.4vw";
-  return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""}">
+  // Bigger overall for accessibility; steps still shrink so long clues (and
+  // image clues, which add ~180 to len) keep fitting the screen.
+  const size = len > 600 ? "2.4vw" : len > 400 ? "3vw" : len > 260 ? "3.6vw" : len > 150 ? "4.4vw" : len > 80 ? "5.2vw" : "6.2vw";
+  const ansSize = len > 150 ? "3.6vw" : "4.6vw";
+  return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""} ${image ? "has-image" : ""}">
     <div class="clue-cat">${esc(catLabel)}</div>
     <div class="clue-text" style="font-size:${size}">${fmtText(clue)}</div>
     ${image ? `<img class="clue-img" src="${esc(image)}" alt="" onerror="imgFail(this)">` : ""}
-    ${revealed ? `<div class="clue-answer ${animate ? "pop" : ""}" style="font-size:${len > 150 ? "3vw" : "3.8vw"}">${fmtText(answer)}</div>` : ""}
+    ${revealed ? `<div class="clue-answer ${animate ? "pop" : ""}" style="font-size:${ansSize}">${fmtText(answer)}</div>` : ""}
   </div></div>`;
 }
 

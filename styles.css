@@ -113,8 +113,11 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 .brand { font-family: Impact, "Arial Black", sans-serif; letter-spacing: .02em; }
 
 /* welcome */
-.welcome-title { font-family: Impact, "Arial Black", sans-serif; font-size: 13vw; color: #fff;
-  text-shadow: .05em .05em 0 #000, 0 0 40px rgba(6,12,233,.9); -webkit-text-stroke: 2px #000; }
+.welcome-pretitle { font-family: Impact, "Arial Black", sans-serif; font-size: 4.6vw; color: var(--value-gold);
+  text-transform: uppercase; letter-spacing: .03em; line-height: 1.05; margin-bottom: 1vh; text-align: center;
+  max-width: 94vw; text-shadow: .05em .05em 0 #000; }
+.welcome-title { font-family: Impact, "Arial Black", sans-serif; font-size: 13vw; color: #fff; line-height: 1.02;
+  text-align: center; max-width: 96vw; text-shadow: .05em .05em 0 #000, 0 0 40px rgba(6,12,233,.9); -webkit-text-stroke: 2px #000; }
 .welcome-sub { font-size: 2.6vw; color: var(--value-gold); margin-top: 2vh; letter-spacing: .2em; text-transform: uppercase; }
 .disp-bluebg { background: radial-gradient(ellipse at center, #1a20f5 0%, var(--board-blue) 45%, #030661 100%); }
 
@@ -133,22 +136,34 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 
 /* clue */
 .clue-full { background: var(--board-blue); position: fixed; inset: 0; display: flex;
-  padding: 6vmin; text-align: center; overflow-y: auto; }
-/* margin:auto centers when content fits and allows scrolling from the top when it doesn't */
-.clue-inner { margin: auto; display: flex; flex-direction: column; align-items: center; }
+  flex-direction: column; align-items: center; justify-content: center; justify-content: safe center;
+  padding: 2.5vh 4vw; text-align: center; overflow-y: auto; }
+/* "safe center" centers when it fits but falls back to top-align when content
+   overflows, so a very long clue never clips the category/first lines */
+.clue-inner { display: flex; flex-direction: column; align-items: center;
+  justify-content: center; justify-content: safe center; width: 100%; max-height: 100%; }
+/* image clues: the picture flex-fills the height left over after the text, so it's
+   as large as possible (vertical or horizontal) and text is never clipped */
+.clue-inner.has-image { height: 100%; }
+.clue-inner.has-image .clue-img { flex: 1 1 auto; min-height: 0; }
 .clue-cat { color: var(--value-gold); font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
-  font-size: 2.4vw; letter-spacing: .08em; margin-bottom: 4vh; text-shadow: .06em .06em 0 #000; }
+  font-size: 2.4vw; letter-spacing: .08em; margin-bottom: 2.4vh; text-shadow: .06em .06em 0 #000; }
 .clue-text { font-family: Georgia, "Times New Roman", serif; font-weight: 700; text-transform: uppercase;
   color: #fff; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw;
-  word-spacing: 0.18em; }  /* roomier gaps between words so long clues read easier */
+  word-spacing: 0.18em; letter-spacing: 0.018em; }  /* roomier word gaps + a hair of letter spacing so caps don't touch */
 .clue-answer { margin-top: 6vh; color: var(--value-gold); font-family: Georgia, serif; font-weight: 700;
-  text-transform: uppercase; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw; }
+  text-transform: uppercase; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw;
+  word-spacing: 0.18em; letter-spacing: 0.018em; }
 /* animate only on first reveal (.pop); re-renders (e.g. score edits) hold static */
 .clue-answer.pop { animation: pop .4s ease; }
-.clue-img { max-width: 72vw; max-height: 40vh; margin-top: 4vh; border: .4vmin solid #000;
-  border-radius: 1vmin; background: #fff; object-fit: contain; }
-/* once the answer is revealed, give it room: the picture shrinks */
-.clue-inner.revealed .clue-img { max-height: 24vh; }
+/* pictures as large as possible — vertical images are height-bound, horizontal
+   are width-bound, so cap both generously; text may sit tight above/below.
+   No frame/background: with object-fit:contain in a flex-filled box, a solid
+   backing would show as letterbox bands, so the photo sits cleanly on the blue */
+.clue-img { max-width: 86vw; max-height: 64vh; margin-top: 1.6vh; object-fit: contain; }
+/* once the answer is revealed it needs room below, so the picture shrinks a bit
+   (still large — Danny prefers big images even if text is tight) */
+.clue-inner.revealed .clue-img { max-height: 46vh; }
 .clue-img-fail { margin-top: 4vh; background: rgba(0,0,0,.4); border: .3vmin dashed rgba(255,255,255,.5);
   border-radius: 1vmin; padding: 2vh 3vw; font-size: 2vw; color: #ffd7d7; }
 @keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -176,12 +191,13 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bigscore-pod .sp-players { font-size: 1.4vw; max-width: 26vw; }
 
-/* big scores view */
-.bigscores { display: flex; gap: 3vw; flex-wrap: wrap; align-items: center; justify-content: center; }
+/* big scores view — pods kept compact so up to 6 teams fit without cutoff */
+.bigscores { display: flex; gap: 1.6vw 2vw; flex-wrap: wrap; align-items: center; justify-content: center;
+  max-width: 96vw; }
 .bigscore-pod { background: var(--board-blue); border: .5vmin solid #000; border-radius: 1.5vmin;
-  padding: 3vh 3vw; text-align: center; }
-.bigscore-pod .sp-name { font-size: 2.6vw; }
-.bigscore-pod .sp-score { font-size: 5vw; }
+  padding: 1.8vh 2.4vw; text-align: center; }
+.bigscore-pod .sp-name { font-size: 2.2vw; }
+.bigscore-pod .sp-score { font-size: 3.8vw; }
 
 /* fullscreen hint button on display */
 .fs-btn { position: fixed; top: 14px; right: 14px; z-index: 50; background: rgba(0,0,0,.55); color: #fff;
@@ -199,6 +215,12 @@ body.display.is-fullscreen .fs-btn { display: none; }
 .winner-score { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
   font-size: 4vw; text-shadow: .06em .06em 0 #000; margin-top: .5vh; }
 .bigscore-pod.is-winner { border-color: var(--value-gold); box-shadow: 0 0 3vmin rgba(245,197,24,.6); }
+/* the winner screen packs banner + name + score + every team pod into one
+   viewport; tighten the vertical rhythm so 5-6 teams never get cut off */
+.winner-view { justify-content: center; gap: 0; padding: 3vh 2vmin; }
+.winner-view .winner-banner { line-height: 1; }
+.winner-view .winner-name { margin-top: 1vh; }
+.winner-view .bigscores { margin-top: 2.5vh; }
 
 /* custom in-page dialogs (control panel) — replace native alert/confirm/prompt
    so the fullscreen TV window is never forced out of fullscreen */

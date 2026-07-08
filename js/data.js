@@ -182,10 +182,10 @@ function parseCategoryTab(tabName, ws, imageMap) {
   return { name: tabName.trim(), clues, warnings };
 }
 
-/* The Game Setup tab -> { title, teams, final } (all optional). */
+/* The Game Setup tab -> { title, subtitle, teams, final } (all optional). */
 function parseSetupTab(ws) {
   const rows = sheetRows(ws);
-  const out = { title: "", teams: [], final: null };
+  const out = { title: "", subtitle: "", teams: [], final: null };
 
   const findValue = (re) => {
     for (const r of rows) {
@@ -198,6 +198,16 @@ function parseSetupTab(ws) {
   };
 
   out.title = findValue(/game\s*(title|name)/i);
+  // The small "precursor" line above the big title lives in cell C5 of the
+  // Game Setup tab. Read that cell DIRECTLY from the worksheet — sheet_to_json
+  // (used by sheetRows) indexes relative to the used range's top-left, so a
+  // positional rows[][] lookup would miss C5 when the range doesn't start at A1.
+  const c5 = ws["C5"];
+  const c5val = c5 ? (c5.w != null ? c5.w : c5.v) : null;
+  out.subtitle = c5val != null ? String(c5val).trim() : "";
+  // Fall back to a labelled cell if a writer adds one; never duplicate the title.
+  if (!out.subtitle) out.subtitle = findValue(/subtitle|pre[- ]?title|tagline/i);
+  if (out.subtitle && out.subtitle === out.title) out.subtitle = "";
 
   const teamHeaderIdx = rows.findIndex(r => r.some(c => /team\s*name/i.test(c)));
   if (teamHeaderIdx !== -1) {
@@ -252,6 +262,7 @@ function buildGameFromWorkbook(wb) {
   if (categories.length) {
     return {
       title: (setup && setup.title) || "Jeopardy!",
+      subtitle: (setup && setup.subtitle) || "",
       rounds: [{ name: "Jeopardy!", categories }],
       final: (setup && setup.final) || null,
       teams: (setup && setup.teams) || [],
@@ -337,7 +348,7 @@ function buildGameFromRows(rows) {
     return { name: label, categories };
   });
   if (!rounds.length) throw new Error("The sheet only has a Final Jeopardy row — add regular question rows too.");
-  return { title: "Custom Game", rounds, final, teams: [] };
+  return { title: "Custom Game", subtitle: "", rounds, final, teams: [] };
 }
 
 /* ---------------- fetching ---------------- */

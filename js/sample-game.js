@@ -2,6 +2,7 @@
 /* Built-in sample game so the app can be tried without a Google Sheet. */
 const SAMPLE_GAME = {
   title: "Sample Game",
+  subtitle: "Welcome to",
   teams: [],
   rounds: [{
     name: "Jeopardy!",
