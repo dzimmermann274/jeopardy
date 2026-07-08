@@ -20,13 +20,242 @@ let finalWagerDrafts = null;              // array of strings, one per team
 let liveAnswerDraft = "";                 // host-typed answer (UNKNOWN questions / overrides)
 let liveAnswerOpen = false;               // keep the override <details> open across re-renders
 
-function openDisplay() {
+/* Open (or reuse) the single display window. `features` is a window.open
+   feature string; the default is the classic small popup on the main screen. */
+function openDisplayWindow(features) {
   displayWin = window.open(location.pathname + "#display", "ppiJeopardyDisplay",
-    "width=1280,height=720");
+    features || "width=1280,height=720");
   setTimeout(send, 600);  // give it a moment, then push state (it also says hello)
+  return displayWin;
 }
+function openDisplay() { return openDisplayWindow(); }
 
 function displayLooksOpen() { return displayWin && !displayWin.closed; }
+
+/* ---------------- multi-screen deploy (Chrome / Edge only) ----------------
+   The Window Management API (getScreenDetails) lets us find the external
+   display and place the game window on it. It exists only in Chromium browsers
+   and only on a secure context (the live HTTPS site or localhost); everything
+   here degrades gracefully to the main-screen options when it's absent. */
+let screenDetailsCache = null;   // ScreenDetails once the host grants permission
+let screensPermDenied = false;   // host dismissed the window-management prompt
+
+const hasWindowMgmt = () => "getScreenDetails" in window;
+
+/* Quick, permission-free check for a second display so we know whether to even
+   show the external options. `screen.isExtended` needs no prompt. */
+function extendedDisplayLikely() {
+  try { return window.screen && window.screen.isExtended === true; }
+  catch (e) { return false; }
+}
+
+/* Fetch (and cache) the full screen layout. MUST be called during a user
+   gesture the first time — Chrome shows the "manage windows" prompt then. */
+async function ensureScreenDetails() {
+  if (screenDetailsCache) return screenDetailsCache;
+  if (!hasWindowMgmt()) return null;
+  try {
+    const sd = await window.getScreenDetails();
+    screenDetailsCache = sd;
+    screensPermDenied = false;
+    // A screen being (un)plugged mid-setup should refresh the dialog's options.
+    if (sd.addEventListener) sd.addEventListener("screenschange", () => { if (screensOv) renderScreensDialog(); });
+    return sd;
+  } catch (e) {
+    screensPermDenied = true;   // prompt denied or blocked by policy
+    return null;
+  }
+}
+
+/* The non-laptop screen: prefer the external one, else a non-primary one, else
+   any screen that isn't the one the control panel is on. */
+function externalScreenOf(sd) {
+  if (!sd || !sd.screens) return null;
+  const cur = sd.currentScreen;
+  return sd.screens.find(s => s.isInternal === false)
+      || sd.screens.find(s => s.isPrimary === false)
+      || sd.screens.find(s => s !== cur)
+      || null;
+}
+function fillFeatures(scr)      { return `left=${scr.availLeft},top=${scr.availTop},width=${scr.availWidth},height=${scr.availHeight}`; }
+function centeredFeatures(scr, w, h) {
+  w = Math.min(w, scr.availWidth); h = Math.min(h, scr.availHeight);
+  const left = Math.round(scr.availLeft + (scr.availWidth - w) / 2);
+  const top  = Math.round(scr.availTop  + (scr.availHeight - h) / 2);
+  return `left=${left},top=${top},width=${w},height=${h}`;
+}
+
+/* Set the display curtain (black / title / game) and broadcast it. Collect any
+   typed team names first so re-rendering the setup screen never wipes them. */
+function setStage(stage) { collectTeamNames(); update(() => { S.stage = stage; }); if (screensOv) renderScreensDialog(); }
+
+/* Deploy the game onto the external display. `stage` is the curtain the new
+   window opens with (use "black" for the safe black-first flow); `fullscreen`
+   fills the whole screen and best-effort auto-fullscreens it. */
+async function deployExternal({ fullscreen, stage }) {
+  const sd = await ensureScreenDetails();
+  const scr = externalScreenOf(sd);
+  if (!scr) { if (screensOv) renderScreensDialog(); return; }
+  collectTeamNames();
+  update(() => { S.stage = stage || "game"; });   // curtain set before the window exists; it gets it via the hello handshake
+  const win = openDisplayWindow(fullscreen ? fillFeatures(scr) : centeredFeatures(scr, 1280, 720));
+  if (fullscreen && win) {
+    // Best-effort borderless fullscreen on that screen. Chrome may block a
+    // non-gesture fullscreen on a freshly opened window; if so the window still
+    // fills the external screen and the host taps F (or the ⛶ button already on
+    // the display) to go borderless — seamless because only black is showing.
+    setTimeout(() => {
+      try {
+        const el = win.document && win.document.documentElement;
+        const p = el && el.requestFullscreen && el.requestFullscreen({ screen: scr });
+        if (p && p.catch) p.catch(() => {});
+      } catch (e) { /* fall back to manual F / ⛶ */ }
+    }, 800);
+  }
+  if (screensOv) renderScreensDialog();
+}
+
+function deployMain() {
+  collectTeamNames();
+  update(() => { S.stage = "game"; });
+  openDisplayWindow();
+  if (screensOv) renderScreensDialog();
+}
+
+/* Split view on the one laptop screen: put the display on the right half.
+   (Browsers won't let a script move the control/main tab, so the host keeps
+   the control panel on the left.) */
+function deploySplitMain() {
+  collectTeamNames();
+  update(() => { S.stage = "game"; });
+  let feat = "width=800,height=900";
+  try {
+    const sc = window.screen;
+    const w = Math.floor((sc.availWidth || 1440) / 2), h = sc.availHeight || 900;
+    const left = (sc.availLeft || 0) + w, top = (sc.availTop || 0);
+    feat = `left=${left},top=${top},width=${w},height=${h}`;
+  } catch (e) { /* use the fallback size */ }
+  openDisplayWindow(feat);
+  if (screensOv) renderScreensDialog();
+}
+
+/* ---------------- the "Display setup" dialog ----------------
+   A persistent overlay kept OUTSIDE #app (like the other modals) so a control
+   re-render never disturbs it. Button-only: opened from the "Display setup"
+   button, never auto-popped. */
+let screensOv = null;
+function openScreensDialog() {
+  if (screensOv) return;
+  screensOv = document.createElement("div");
+  screensOv.className = "modal-overlay";
+  document.body.appendChild(screensOv);
+  screensOv.onclick = (e) => { if (e.target === screensOv) closeScreensDialog(); };
+  screensOv.__keyHandler = (e) => { if (e.key === "Escape") closeScreensDialog(); };
+  document.addEventListener("keydown", screensOv.__keyHandler);
+  renderScreensDialog();
+  // A second screen is attached but we haven't asked for placement permission
+  // yet — do it now while a click is active, so the external options light up.
+  if (hasWindowMgmt() && extendedDisplayLikely() && !screenDetailsCache && !screensPermDenied) {
+    ensureScreenDetails().then(() => { if (screensOv) renderScreensDialog(); });
+  }
+}
+function closeScreensDialog() {
+  if (!screensOv) return;
+  document.removeEventListener("keydown", screensOv.__keyHandler);
+  screensOv.remove();
+  screensOv = null;
+}
+
+function renderScreensDialog() {
+  if (!screensOv) return;
+  const chrome = hasWindowMgmt();
+  const extended = extendedDisplayLikely();
+  const extScreen = externalScreenOf(screenDetailsCache);
+  const displayOpen = displayLooksOpen();
+  const stage = S.stage || "game";
+
+  let externalHtml = "";
+  if (extended) {
+    if (extScreen) {
+      const label = extScreen.label || "External display";
+      externalHtml = `
+      <div class="screens-section">
+        <div class="sec-title">External display — ${esc(label)}</div>
+        <div class="screens-btns">
+          <button class="btn primary" data-act="ext-black">Deploy a black screen to the external display</button>
+          <button class="btn" data-act="ext-full">Deploy the game full screen on the external display</button>
+          <button class="btn" data-act="ext-normal">Deploy a normal window on the external display</button>
+        </div>
+        <p class="screens-note"><b>Safest:</b> deploy the black screen first, press <b>F</b> in that window (or click ⛶) to make it borderless while only black shows, then use <b>“Show the game”</b> below.</p>
+      </div>`;
+    } else if (screensPermDenied) {
+      externalHtml = `
+      <div class="screens-section">
+        <div class="sec-title">External display</div>
+        <p class="screens-note">A second screen is connected, but this page needs permission to place a window on it.
+          <button class="btn small" data-act="grant">Grant screen permission</button></p>
+      </div>`;
+    } else {
+      externalHtml = `
+      <div class="screens-section">
+        <div class="sec-title">External display</div>
+        <p class="screens-note">Detecting the external display…</p>
+      </div>`;
+    }
+  }
+
+  const mainHtml = `
+    <div class="screens-section">
+      <div class="sec-title">Main screen (this laptop)</div>
+      <div class="screens-btns">
+        <button class="btn" data-act="main-normal">Deploy on the main screen (normal window)</button>
+        <button class="btn" data-act="main-split">Split: control panel + display side by side</button>
+      </div>
+    </div>`;
+
+  const failHtml = `
+    <div class="screens-section">
+      <div class="sec-title">Failsafes ${displayOpen ? "" : "— open a display first"}</div>
+      <div class="screens-btns">
+        <button class="btn ${stage === "title" ? "gold" : ""}" data-act="fade-title" ${displayOpen ? "" : "disabled"}>Fade to the title screen</button>
+        <button class="btn ${stage === "black" ? "gold" : ""}" data-act="fade-black" ${displayOpen ? "" : "disabled"}>Fade to black</button>
+        <button class="btn ${stage === "game" ? "primary" : ""}" data-act="fade-game" ${displayOpen ? "" : "disabled"}>Show the game (fade back)</button>
+      </div>
+    </div>`;
+
+  const noChrome = !chrome ? `<p class="screens-note">⚠️ Automatic external-display placement needs Google Chrome or Edge — the options below still work.</p>` : "";
+  const noExt = (chrome && !extended) ? `<p class="screens-note">No external display detected. Connect a TV/projector as an <b>extended</b> display (not mirrored) to unlock the external-screen options.</p>` : "";
+
+  screensOv.innerHTML = `
+    <div class="modal-box screens-dialog">
+      <div class="screens-head">
+        <h3>Display setup</h3>
+        <span class="status-pill"><span class="dot ${displayOpen ? "on" : ""}"></span>${displayOpen ? "Display open" : "No display yet"}</span>
+      </div>
+      ${noChrome}${noExt}
+      ${externalHtml}
+      ${mainHtml}
+      ${failHtml}
+      <div class="modal-btns" style="margin-top:18px"><button class="btn" data-act="close">Close</button></div>
+    </div>`;
+
+  screensOv.querySelectorAll("[data-act]").forEach(b => b.onclick = () => onScreensAct(b.dataset.act));
+}
+
+function onScreensAct(act) {
+  switch (act) {
+    case "close":      closeScreensDialog(); break;
+    case "grant":      ensureScreenDetails().then(() => { if (screensOv) renderScreensDialog(); }); break;
+    case "ext-black":  deployExternal({ fullscreen: true,  stage: "black" }); break;
+    case "ext-full":   deployExternal({ fullscreen: true,  stage: "game"  }); break;
+    case "ext-normal": deployExternal({ fullscreen: false, stage: "game"  }); break;
+    case "main-normal": deployMain(); break;
+    case "main-split":  deploySplitMain(); break;
+    case "fade-title": setStage("title"); break;
+    case "fade-black": setStage("black"); break;
+    case "fade-game":  setStage("game");  break;
+  }
+}
 
 /* ---------------- custom dialogs ----------------
    Chrome exits fullscreen whenever a native alert/confirm/prompt is shown
@@ -114,6 +343,22 @@ function renderControl() {
   return renderPlay();
 }
 
+/* Read the team-name inputs on the setup screen back into S.teams. Safe to call
+   anytime — a no-op when those inputs aren't on screen (e.g. during play), so
+   the deploy/curtain actions can call it before re-rendering without harm. */
+function collectTeamNames() {
+  const inputs = app.querySelectorAll("[data-team]");
+  if (!inputs.length) return;
+  S.teams = [...inputs].map(inp => {
+    const idx = +inp.dataset.team;
+    return {
+      name: inp.value.trim() || "Team " + (idx + 1),
+      players: (S.teams[idx] && S.teams[idx].players) || [],
+      score: (S.teams[idx] ? S.teams[idx].score : 0),
+    };
+  });
+}
+
 /* ---------------- setup screen ---------------- */
 function renderSetup() {
   const teamsDraft = S.teams.length ? S.teams : [{ name: "Team 1", score: 0 }, { name: "Team 2", score: 0 }, { name: "Team 3", score: 0 }];
@@ -185,9 +430,11 @@ function renderSetup() {
 
     <div class="card">
       <h2>Step 3 — Screens</h2>
-      <p class="hint">Click the button below — a second window opens. Drag it onto the TV, then click the
-      ⛶ Fullscreen button in its top-right corner (or press F in that window).</p>
+      <p class="hint">Use <b>Display setup</b> for one-click options — deploy straight onto an external display,
+      the safe black-screen-first flow, a split view, and the fade failsafes. Or open a plain window and drag it
+      onto the TV yourself, then press <b>F</b> (or click ⛶) to go fullscreen.</p>
       <div class="field-row" style="margin-top:12px">
+        <button class="btn" id="btnScreens">Display setup</button>
         <button class="btn" id="btnOpenDisplay">Open display window</button>
         <button class="btn primary" id="btnStart" ${S.game ? "" : "disabled"}>Start the game ▶</button>
       </div>
@@ -198,7 +445,7 @@ function renderSetup() {
   const bResume = document.getElementById("btnResume");
   if (bResume) bResume.onclick = () => {
     const sg = loadSavedGame();
-    if (sg) update(() => { S = sg; });
+    if (sg) { sg.stage = "game"; update(() => { S = sg; }); }   // resume showing the game, never a leftover curtain
   };
   const bDiscard = document.getElementById("btnDiscardSave");
   if (bDiscard) bDiscard.onclick = () => { clearSavedGame(); renderControl(); };
@@ -241,6 +488,7 @@ function renderSetup() {
     const i = +b.dataset.delteam;
     update(() => { S.teams.splice(i, 1); });
   });
+  document.getElementById("btnScreens").onclick = () => { collectTeamNames(); openScreensDialog(); };
   document.getElementById("btnOpenDisplay").onclick = () => { collectTeamNames(); openDisplay(); renderControl(); };
   document.getElementById("btnStart").onclick = () => {
     collectTeamNames();
@@ -252,19 +500,6 @@ function renderSetup() {
       S.finalWagers = S.teams.map(() => 0);
     });
   };
-
-  function collectTeamNames() {
-    const inputs = app.querySelectorAll("[data-team]");
-    if (!inputs.length) return;
-    S.teams = [...inputs].map(inp => {
-      const idx = +inp.dataset.team;
-      return {
-        name: inp.value.trim() || "Team " + (idx + 1),
-        players: (S.teams[idx] && S.teams[idx].players) || [],
-        score: (S.teams[idx] ? S.teams[idx].score : 0),
-      };
-    });
-  }
 }
 
 /* ---------------- play screen ---------------- */
@@ -297,6 +532,7 @@ function renderPlay() {
       <div class="ctl-toolbar">
         <span class="status-pill"><span class="dot ${displayLooksOpen() ? "on" : ""}"></span>Display</span>
         <button class="btn small" id="btnReopenDisplay">Open display</button>
+        <button class="btn small" id="btnScreens">Display setup</button>
         ${isWinner
           ? `<button class="btn small" id="btnWinnerBack">◀ Back to game</button>`
           : `<button class="btn small" id="btnShowScores">${S.view === "bigscores" ? "◀ Back to game" : "Show scores on TV"}</button>
@@ -326,6 +562,7 @@ function renderPlay() {
   </div>`;
 
   document.getElementById("btnReopenDisplay").onclick = () => { openDisplay(); renderControl(); };
+  document.getElementById("btnScreens").onclick = () => openScreensDialog();
   const bScores = document.getElementById("btnShowScores");
   if (bScores) bScores.onclick = () =>
     update(() => {

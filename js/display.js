@@ -8,6 +8,18 @@ function fsElement() {
   return document.fullscreenElement || document.webkitFullscreenElement || null;
 }
 
+/* The title/welcome screen markup — shared by the "welcome" view and by the
+   "title" curtain (the fade-to-title failsafe), so both look identical. */
+function welcomeHtml() {
+  const title = (S.game && S.game.title) || "Jeopardy!";
+  const subtitle = (S.game && S.game.subtitle) || "";
+  const size = title.length > 24 ? "6vw" : title.length > 13 ? "9vw" : "13vw";
+  return `<div class="disp-view disp-bluebg">
+    ${subtitle ? `<div class="welcome-pretitle">${fmtText(subtitle.toUpperCase())}</div>` : ""}
+    <div class="welcome-title" style="font-size:${size}">${fmtText(title.toUpperCase())}</div>
+    <div class="welcome-sub">Get ready to play</div></div>`;
+}
+
 /* Remembers which revealed answer is currently on screen, so the "pop"
    animation plays once on reveal and then holds static across re-renders
    (e.g. when the host edits a score while the answer is up). */
@@ -29,13 +41,7 @@ function renderDisplay() {
   winnerShown = S.view === "winner";
 
   if (S.phase === "setup" || !S.game || S.view === "welcome") {
-    const title = (S.game && S.game.title) || "Jeopardy!";
-    const subtitle = (S.game && S.game.subtitle) || "";
-    const size = title.length > 24 ? "6vw" : title.length > 13 ? "9vw" : "13vw";
-    view = `<div class="disp-view disp-bluebg">
-      ${subtitle ? `<div class="welcome-pretitle">${fmtText(subtitle.toUpperCase())}</div>` : ""}
-      <div class="welcome-title" style="font-size:${size}">${fmtText(title.toUpperCase())}</div>
-      <div class="welcome-sub">Get ready to play</div></div>`;
+    view = welcomeHtml();
   } else if (S.view === "bigscores") {
     view = `<div class="disp-view">
       <div class="brand" style="font-size:4vw;color:var(--value-gold);margin-bottom:3.5vh;text-shadow:.06em .06em 0 #000">CURRENT SCORES</div>
@@ -116,9 +122,32 @@ function renderDisplay() {
 
   document.getElementById("btnFS").onclick = goFullscreen;
   runTimerBar();
+  renderCurtain();
   fitClue();                          // immediate best-effort
   requestAnimationFrame(fitClue);     // correct once layout/fonts have settled
   setTimeout(fitClue, 250);           // backup in case fonts/layout settle later
+}
+
+/* The curtain is a persistent overlay (kept OUTSIDE #app, which is rebuilt on
+   every render) so its opacity can transition smoothly — the fade-to-black /
+   fade-to-title / fade-back-to-game failsafes. Driven purely by S.stage:
+   the control panel sets it and broadcasts, the display just reacts.
+   Content is only swapped when the stage changes, so a re-render mid-fade
+   (e.g. the host edits a score while the curtain is up) never restarts it. */
+function renderCurtain() {
+  const stage = S.stage || "game";
+  let el = document.getElementById("dispCurtain");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "dispCurtain";
+    el.className = "disp-curtain";
+    document.body.appendChild(el);
+  }
+  if (el.dataset.stage !== stage) {
+    el.dataset.stage = stage;
+    el.innerHTML = stage === "title" ? welcomeHtml() : "";
+  }
+  el.classList.toggle("open", stage !== "game");   // opacity 1 when a curtain is up
 }
 
 /* Safety net so long text is never cut off: after layout, if the clue/answer
