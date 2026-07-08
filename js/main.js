@@ -19,20 +19,13 @@ if (IS_DISPLAY) {
   });
   document.addEventListener("fullscreenchange", renderDisplay);
   document.addEventListener("webkitfullscreenchange", renderDisplay);
-  // Unlock sound on the first interaction here (a click/key) so the timer music
-  // can later play — browsers block audio until a gesture in this window.
-  const audioPrimer = () => {
-    primeTimerAudio();
-    if (audioPrimed) { document.removeEventListener("pointerdown", audioPrimer, true); document.removeEventListener("keydown", audioPrimer, true); }
-  };
-  document.addEventListener("pointerdown", audioPrimer, true);
-  document.addEventListener("keydown", audioPrimer, true);
   // Opened with "#display&fs=1" (a fullscreen deploy from the control panel):
   // enter true fullscreen automatically — on the first key/click, or with no
   // interaction at all if this site is allow-listed for automatic fullscreen.
   if (location.hash.includes("fs=1")) armAutoFullscreen();
 } else {
   document.title = "Jeopardy — Control Panel";
+  ensureTimerAudio();   // start buffering the think music so the first timer is instant
   renderControl();   // if a saved game exists, the setup screen offers to resume it
   // Check for another open control tab before claiming the display: broadcast
   // hello, and only push our state if nobody objects within half a second.

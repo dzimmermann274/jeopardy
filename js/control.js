@@ -364,11 +364,68 @@ function otherControlBannerHtml() {
     Two control panels fight over the TV and the saved game — close this tab and keep using the original one.</div>`;
 }
 
+/* ---- timer "think" music --------------------------------------------------
+   Plays from THIS (control-panel) window. The host clicks "30-second timer",
+   which is a real user gesture, so the browser always allows the sound — no
+   priming needed (a passive display window couldn't rely on that). Route the
+   Mac's sound output to the TV and it plays there, like any music app.
+   Married to the timer: starts with the countdown and fades out (never a hard
+   cut) when it's cancelled, the answer is revealed, the view changes, or time
+   runs out. Driven by S.timer, so every existing timer action already hits it. */
+let timerAudio = null;
+let audioTimerKey = null;        // startedAt of the timer whose music is playing
+let audioFadeRAF = null;
+let audioExpiryTimer = null;
+
+function ensureTimerAudio() {
+  if (!timerAudio) { timerAudio = new Audio("audio/think.mp3"); timerAudio.preload = "auto"; }
+  return timerAudio;
+}
+function cancelAudioFade() { if (audioFadeRAF) { cancelAnimationFrame(audioFadeRAF); audioFadeRAF = null; } }
+
+function startTimerAudio(startedAt, elapsed, seconds) {
+  if (audioTimerKey === startedAt) return;     // already playing this timer
+  audioTimerKey = startedAt;
+  const a = ensureTimerAudio();
+  cancelAudioFade();
+  a.volume = 1;
+  try { a.currentTime = (elapsed > 0.2 && isFinite(a.duration)) ? Math.min(elapsed, a.duration) : 0; } catch (e) {}
+  const p = a.play(); if (p && p.catch) p.catch(() => {});    // called within the click gesture -> allowed
+  clearTimeout(audioExpiryTimer);
+  audioExpiryTimer = setTimeout(() => { if (audioTimerKey === startedAt) stopTimerAudio(); }, Math.max(0, (seconds - elapsed) * 1000));
+}
+
+function stopTimerAudio() {
+  if (audioTimerKey === null) return;
+  audioTimerKey = null;
+  clearTimeout(audioExpiryTimer); audioExpiryTimer = null;
+  const a = timerAudio; if (!a) return;
+  cancelAudioFade();
+  const startVol = a.volume, t0 = Date.now(), dur = 700;
+  const step = () => {
+    const k = Math.min(1, (Date.now() - t0) / dur);
+    a.volume = startVol * (1 - k);
+    if (k < 1) audioFadeRAF = requestAnimationFrame(step);
+    else { a.pause(); try { a.currentTime = 0; } catch (e) {} a.volume = 1; audioFadeRAF = null; }
+  };
+  step();
+}
+
+/* Marry the music to the timer. Called at the end of every control render, so
+   any state change that starts or stops the timer plays or fades the music. */
+function syncTimerAudio() {
+  const running = S.timer && S.view !== "winner" && S.view !== "bigscores";
+  const elapsed = running ? (Date.now() - S.timer.startedAt) / 1000 : 0;
+  if (running && elapsed < S.timer.seconds) startTimerAudio(S.timer.startedAt, elapsed, S.timer.seconds);
+  else stopTimerAudio();
+}
+
 function renderControl() {
   if (IS_DISPLAY) return;
   document.body.className = "control";
-  if (S.phase === "setup") return renderSetup();
-  return renderPlay();
+  if (S.phase === "setup") renderSetup();
+  else renderPlay();
+  syncTimerAudio();
 }
 
 /* Read the team-name inputs on the setup screen back into S.teams. Safe to call
