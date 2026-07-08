@@ -182,10 +182,19 @@ function parseCategoryTab(tabName, ws, imageMap) {
   return { name: tabName.trim(), clues, warnings };
 }
 
-/* The Game Setup tab -> { title, subtitle, teams, final } (all optional). */
+/* Read one cell (e.g. "C5") straight from the worksheet, since sheet_to_json
+   is range-relative and a positional rows[][] lookup can't reliably hit a
+   fixed cell when the used range doesn't start at A1. */
+function cellText(ws, addr) {
+  const c = ws[addr];
+  const v = c ? (c.w != null ? c.w : c.v) : null;
+  return v != null ? String(v).trim() : "";
+}
+
+/* The Game Setup tab -> { title, subtitle, categoryNames, teams, final }. */
 function parseSetupTab(ws) {
   const rows = sheetRows(ws);
-  const out = { title: "", subtitle: "", teams: [], final: null };
+  const out = { title: "", subtitle: "", categoryNames: [], teams: [], final: null };
 
   const findValue = (re) => {
     for (const r of rows) {
@@ -202,12 +211,15 @@ function parseSetupTab(ws) {
   // Game Setup tab. Read that cell DIRECTLY from the worksheet — sheet_to_json
   // (used by sheetRows) indexes relative to the used range's top-left, so a
   // positional rows[][] lookup would miss C5 when the range doesn't start at A1.
-  const c5 = ws["C5"];
-  const c5val = c5 ? (c5.w != null ? c5.w : c5.v) : null;
-  out.subtitle = c5val != null ? String(c5val).trim() : "";
+  out.subtitle = cellText(ws, "C5");
   // Fall back to a labelled cell if a writer adds one; never duplicate the title.
   if (!out.subtitle) out.subtitle = findValue(/subtitle|pre[- ]?title|tagline/i);
   if (out.subtitle && out.subtitle === out.title) out.subtitle = "";
+
+  // Category display names live in row 4, columns E..J (up to 6), mapped
+  // left-to-right onto the categories on the board. This lets a category be
+  // named from a cell (where apostrophes etc. survive) instead of the tab name.
+  out.categoryNames = ["E4", "F4", "G4", "H4", "I4", "J4"].map(a => cellText(ws, a));
 
   const teamHeaderIdx = rows.findIndex(r => r.some(c => /team\s*name/i.test(c)));
   if (teamHeaderIdx !== -1) {
@@ -238,21 +250,27 @@ function parseSetupTab(ws) {
 }
 
 function buildGameFromWorkbook(wb) {
-  // Banks first: categories need the image map to resolve Image IDs.
+  // Banks + Game Setup first: categories need the image map to resolve Image
+  // IDs, and the Game Setup tab supplies the category display names (E4..J4).
   let imageMap = {};
+  let setup = null;
   for (const name of wb.SheetNames) {
-    if (isImageBankTabName(name)) { imageMap = parseImageBank(wb.Sheets[name]); break; }
+    if (isImageBankTabName(name)) imageMap = parseImageBank(wb.Sheets[name]);
+    else if (isSetupTabName(name) && !setup) setup = parseSetupTab(wb.Sheets[name]);
   }
+  const categoryNames = (setup && setup.categoryNames) || [];
 
   const categories = [];
   const warnings = [];
-  let setup = null;
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name];
-    if (isMetaTabName(name) || isQuestionBankTabName(name) || isImageBankTabName(name)) continue;
-    if (isSetupTabName(name)) { if (!setup) setup = parseSetupTab(ws); continue; }
+    if (isMetaTabName(name) || isQuestionBankTabName(name) || isImageBankTabName(name) || isSetupTabName(name)) continue;
     const cat = parseCategoryTab(name, ws, imageMap);
     if (cat) {
+      // Game Setup's E4..J4 names (left to right on the board) override the tab
+      // name; an empty cell leaves the tab name in place.
+      const overrideName = (categoryNames[categories.length] || "").trim();
+      if (overrideName) cat.name = overrideName;
       warnings.push(...(cat.warnings || []));
       delete cat.warnings;
       categories.push(cat);
