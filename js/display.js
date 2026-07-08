@@ -109,7 +109,7 @@ function renderDisplay() {
     const fimgs = currentClueImages(f, S.finalRevealed);
     view = (S.photoZoom && fimgs.length)
       ? photoZoomHtml(fimgs)
-      : clueScreenHtml(f.category, f.clue, f.answer, S.finalRevealed, fimgs, animateAnswer, f.replace);
+      : clueScreenHtml(f.category, f.clue, f.answer, S.finalRevealed, fimgs, animateAnswer, f.replace, clueImageChanges(f));
   } else if (S.view === "clue" && S.active) {
     const cl = activeClue();
     if (cl) {
@@ -117,7 +117,7 @@ function renderDisplay() {
       const imgs = currentClueImages(cl, S.revealed);   // answer images once revealed (if the sheet split them with THEN)
       view = (S.photoZoom && imgs.length)
         ? photoZoomHtml(imgs)                            // blown up to fill the TV (Task: photos full screen)
-        : clueScreenHtml(activeCatName() + " — " + money(amount), cl.clue, cl.answer, S.revealed, imgs, animateAnswer, cl.replace);
+        : clueScreenHtml(activeCatName() + " — " + money(amount), cl.clue, cl.answer, S.revealed, imgs, animateAnswer, cl.replace, clueImageChanges(cl));
     }
   }
   if (!view && r) {
@@ -348,26 +348,47 @@ function photoZoomHtml(imgs) {
     ${imgs.map(u => `<img class="pz-img" src="${esc(u)}" alt="" onerror="imgFail(this)">`).join("")}</div>`;
 }
 
-function clueScreenHtml(catLabel, clue, answer, revealed, image, animate, replace) {
+function clueScreenHtml(catLabel, clue, answer, revealed, image, animate, replace, imageChanged) {
   // Clues flagged in the sheet ("Answer replaces question?") drop the question
   // text once the answer is revealed so the answer fills the screen — but a
   // photo, if any, always stays.
   const hideQ = !!(replace && revealed);
   const imgs = imageList(image);          // one or two pictures
   const hasImg = imgs.length > 0;
-  // Scale by total visible content so very long clues (and the revealed
-  // answer, and a picture) still fit; .clue-full also scrolls as a last resort.
-  const len = (hideQ ? 0 : clue.length) + (revealed ? String(answer || "").length : 0) + (hasImg ? 180 : 0);
-  // Bigger overall for accessibility; steps still shrink so long clues (and
-  // image clues, which add ~180 to len) keep fitting the screen.
+  const ansLen = String(answer || "").length;
+  // Scale the QUESTION text by total visible content so long clues still fit.
+  const len = (hideQ ? 0 : clue.length) + (revealed ? ansLen : 0) + (hasImg ? 180 : 0);
   const size = len > 600 ? "2.4vw" : len > 400 ? "3vw" : len > 260 ? "3.6vw" : len > 150 ? "4.4vw" : len > 80 ? "5.2vw" : "6.2vw";
-  // When the answer has the screen to itself, let it be larger.
-  const ansLen = String(answer || "").length + (hasImg ? 120 : 0);
-  const ansSize = hideQ
-    ? (ansLen > 320 ? "3.6vw" : ansLen > 180 ? "4.6vw" : ansLen > 90 ? "5.8vw" : "7vw")
-    : (len > 150 ? "3.6vw" : "4.6vw");
+
+  // Answer font + picture prominence — always lean LARGE (group viewing), with the
+  // balance between picture and answer set by scenario. imgMaxVh caps the picture
+  // (null = fill the space); fitClue still shrinks text if a long answer overflows.
+  const shortAns = ansLen <= 45, longAns = ansLen > 115;
+  let ansSize, imgMaxVh = null;
+  if (!revealed) {
+    imgMaxVh = imgs.length > 1 ? 46 : null;     // pre-reveal: cap two pictures so the question stays big; one fills
+  } else if (hasImg) {
+    if (imageChanged && hideQ) {
+      // a NEW picture takes over from the question — accentuate it; answer big at
+      // the bottom, equally prevalent.
+      imgMaxVh = 62; ansSize = shortAns ? "5.6vw" : longAns ? "3.6vw" : "4.6vw";
+    } else if (shortAns) {
+      imgMaxVh = 58; ansSize = "5.6vw";           // short answer: picture AND answer both big
+    } else if (longAns) {
+      imgMaxVh = 34; ansSize = "3.4vw";           // long answer, unchanged picture: give the text the room
+    } else {
+      imgMaxVh = 46; ansSize = "4.4vw";
+    }
+  } else {
+    // no picture — the answer owns the screen; keep the existing (big) steps
+    ansSize = hideQ
+      ? (ansLen > 320 ? "3.6vw" : ansLen > 180 ? "4.6vw" : ansLen > 90 ? "5.8vw" : "7vw")
+      : (len > 150 ? "3.6vw" : "4.6vw");
+  }
+
+  const imgsStyle = (imgMaxVh != null) ? ` style="max-height:${imgMaxVh}vh"` : "";
   const imgHtml = hasImg
-    ? `<div class="clue-imgs${imgs.length > 1 ? " multi" : ""}">${imgs.map(u => `<img class="clue-img" src="${esc(u)}" alt="" onload="fitClue()" onerror="imgFail(this)">`).join("")}</div>`
+    ? `<div class="clue-imgs${imgs.length > 1 ? " multi" : ""}"${imgsStyle}>${imgs.map(u => `<img class="clue-img" src="${esc(u)}" alt="" onload="fitClue()" onerror="imgFail(this)">`).join("")}</div>`
     : "";
   return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""} ${hasImg ? "has-image" : ""}">
     <div class="clue-cat">${esc(catLabel)}</div>

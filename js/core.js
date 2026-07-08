@@ -139,6 +139,13 @@ function currentClueImages(cl, revealed) {
   const set = (revealed && cl.answerImage != null) ? cl.answerImage : cl.image;
   return imageList(set);
 }
+/* True when the answer shows DIFFERENT picture(s) than the question (the sheet
+   used "THEN" with different IDs) — the display accentuates the new picture. */
+function clueImageChanges(cl) {
+  if (!cl || cl.answerImage == null) return false;
+  const a = imageList(cl.answerImage), q = imageList(cl.image);
+  return a.length > 0 && a.join("|") !== q.join("|");
+}
 /* The team(s) with the top score — used by the winner screen (handles ties). */
 function winnersOf(teams) {
   if (!teams || !teams.length) return [];
