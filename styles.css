@@ -171,14 +171,11 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 .clue-imgs { display: flex; gap: 1.6vw; justify-content: center; align-items: center;
   width: 100%; min-height: 0; margin-top: 1.6vh; }
 .clue-img { max-width: 86vw; max-height: 64vh; object-fit: contain; flex: 0 1 auto; }
-.clue-inner.has-image .clue-imgs .clue-img { max-height: 100%; }   /* fill the flex-filled row */
-/* Two pictures share the width; cap their HEIGHT so the clue text stays big and
-   readable from a distance (a healthy balance — still large photos). */
-.clue-imgs.multi .clue-img { max-width: 46vw; max-height: 44vh; }
-.clue-inner.revealed .clue-imgs.multi .clue-img { max-height: 34vh; }
-/* once the answer is revealed it needs room below, so pictures shrink a bit
-   (still large — Danny prefers big images even if text is tight) */
-.clue-inner.revealed .clue-imgs { max-height: 46vh; }
+/* The picture(s) fill their row; the ROW's max-height (set inline per scenario in
+   clueScreenHtml — bigger for a new answer picture / short answer, smaller behind
+   a long answer) is what decides how prominent the picture is. */
+.clue-inner.has-image .clue-imgs .clue-img { max-height: 100%; }
+.clue-imgs.multi .clue-img { max-width: 46vw; }   /* two share the width; height from the row cap */
 /* "Photos full screen" — the current picture(s) blown up to fill the whole TV,
    on black so they're most visible. Not the browser fullscreen; just a view. */
 .photo-zoom { position: fixed; inset: 0; background: #000; display: flex; align-items: center;
