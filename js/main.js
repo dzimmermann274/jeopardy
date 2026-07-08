@@ -19,6 +19,14 @@ if (IS_DISPLAY) {
   });
   document.addEventListener("fullscreenchange", renderDisplay);
   document.addEventListener("webkitfullscreenchange", renderDisplay);
+  // Unlock sound on the first interaction here (a click/key) so the timer music
+  // can later play — browsers block audio until a gesture in this window.
+  const audioPrimer = () => {
+    primeTimerAudio();
+    if (audioPrimed) { document.removeEventListener("pointerdown", audioPrimer, true); document.removeEventListener("keydown", audioPrimer, true); }
+  };
+  document.addEventListener("pointerdown", audioPrimer, true);
+  document.addEventListener("keydown", audioPrimer, true);
   // Opened with "#display&fs=1" (a fullscreen deploy from the control panel):
   // enter true fullscreen automatically — on the first key/click, or with no
   // interaction at all if this site is allow-listed for automatic fullscreen.
