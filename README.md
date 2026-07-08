@@ -49,10 +49,18 @@ Double`) is still auto-detected and supported.
 1. Open the game link on the laptop (this is the control panel).
 2. Paste the workbook link from your question-writer → **Load from Google Sheets**
    (or use the built-in sample game). Title, teams, and players fill in automatically.
-3. Click **Open display window** → drag that window onto the TV → click **⛶ Fullscreen**
-   (or press **F** in that window).
+3. Put the game on the TV. **Easiest (Chrome/Edge):** click **Display setup** and pick an option
+   — deploy straight onto the external display, or the safe **black-screen-first** flow (put up a
+   black screen, make it borderless with **F** while only black shows, then **Show the game**).
+   The first time, Chrome asks permission to "manage windows on all your displays" — approve it.
+   **Or the manual way:** **Open display window** → drag it onto the TV → click **⛶ Fullscreen**
+   (or press **F** in that window). External-display options only appear when a second screen is
+   connected as an *extended* (not mirrored) display.
 4. Click **Start the game ▶** and run everything from the laptop. Answers appear on the TV
    for everyone — including you — at the same moment.
+
+**Display setup** (button in the header, any time) also has **fade to the title screen**,
+**fade to black**, and **show the game** as failsafes if anything looks wrong on the TV mid-game.
 
 Use **🏆 Announce winner** (top of the control panel) at any point to show a final
 results screen on the TV with the champion highlighted (ties handled); it asks "are you
@@ -75,8 +83,8 @@ Plain HTML/CSS/JS, no build step, no backend. Deployed as-is on GitHub Pages.
 | `styles.css` | All styles. Control-panel styles under `body.control`, TV styles under `body.display`. |
 | `js/core.js` | Shared state object `S`, BroadcastChannel sync, localStorage save/resume, helpers. |
 | `js/data.js` | Google Sheets fetch (whole-workbook xlsx export; CSV fallbacks), workbook parser (tab-per-category), legacy row-list parser. |
-| `js/control.js` | The entire control-panel UI and game-flow handlers. |
-| `js/display.js` | The entire TV rendering (board, clue, Daily Double, Final, scores, timer). |
+| `js/control.js` | The entire control-panel UI and game-flow handlers, plus the **Display setup** dialog (multi-screen deploy via the Window Management API + the fade failsafes). |
+| `js/display.js` | The entire TV rendering (board, clue, Daily Double, Final, scores, timer) and the fade **curtain** overlay driven by `S.stage` (`game`/`black`/`title`). |
 | `js/sample-game.js` | The built-in demo game. |
 | `js/main.js` | Boot: decides which mode this window is. |
 | `js/vendor/xlsx.full.min.js` | SheetJS (reads the workbook in the browser). |

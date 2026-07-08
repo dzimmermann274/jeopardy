@@ -29,6 +29,10 @@ function freshState() {
     finalRevealed: false,
     finalAwarded: {},        // teamIdx -> "+"|"-" for final (double-award guard)
     timer: null,             // {startedAt, seconds}
+    stage: "game",           // display curtain, independent of the game view:
+                             //   "game"  = show the live game (no curtain)
+                             //   "black" = fade the TV to solid black
+                             //   "title" = fade the TV to the title screen
   };
 }
 let S = freshState();

@@ -206,6 +206,16 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 body.display:hover .fs-btn { opacity: 1; }
 body.display.is-fullscreen .fs-btn { display: none; }
 
+/* fade curtain on the display — the fade-to-black / fade-to-title / show-the-game
+   failsafes and the black-screen-first deploy flow. A persistent overlay over
+   everything (kept outside #app so it survives re-renders), driven by S.stage,
+   so its opacity transitions smoothly. z-index sits below the ⛶ button so the
+   host can still click it to go borderless while the curtain is up. */
+.disp-curtain { position: fixed; inset: 0; z-index: 40; display: flex; background: #000;
+  opacity: 0; pointer-events: none; transition: opacity .6s ease; }
+.disp-curtain.open { opacity: 1; }
+.disp-curtain .disp-view { flex: 1; }
+
 /* winner screen (display/TV) — same look as the score screen, with a champion banner */
 .winner-banner { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
   font-size: 9.5vw; text-shadow: .06em .06em 0 #000; letter-spacing: .04em; }
@@ -232,3 +242,15 @@ body.display.is-fullscreen .fs-btn { display: none; }
 .modal-input { width: 100%; background: #191c2b; color: var(--panel-text); border: 1px solid #3a3f58;
   border-radius: 8px; padding: 10px 12px; font-size: 15px; margin-bottom: 16px; }
 .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* Display setup dialog (screen deploy + fade failsafes) */
+.modal-box.screens-dialog { max-width: 560px; }
+.screens-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.screens-head h3 { font-size: 19px; letter-spacing: .5px; }
+.screens-section { margin-top: 16px; }
+.screens-section .sec-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--panel-dim); margin-bottom: 8px; }
+.screens-btns { display: flex; flex-direction: column; gap: 8px; }
+.screens-btns .btn { width: 100%; text-align: left; }
+.screens-note { font-size: 12.5px; color: var(--panel-dim); line-height: 1.55; margin-top: 8px; }
+.screens-note .btn.small { margin-top: 6px; }
