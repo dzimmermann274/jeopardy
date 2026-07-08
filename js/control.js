@@ -623,7 +623,7 @@ function clueControlHtml(cl, isDD) {
     <h2>${isDD || ddTeam ? "💰 Daily Double" : "Clue"} — ${esc(activeCatName())} for ${money(amount)}</h2>
     <div class="clue-box">
       <div class="label">On the TV right now</div>
-      <div class="cluetext">${esc(cl.clue)}</div>
+      <div class="cluetext">${fmtText(cl.clue)}</div>
       ${cl.image ? (window.__imgErrorSrc === cl.image
         ? `<p class="hint" style="margin-top:8px;color:#ff9b9b">📷⚠️ The picture FAILED to load on the TV — describe it aloud, or skip this one.</p>`
         : `<p class="hint" style="margin-top:8px">📷 This question has a picture — it's on the TV under the clue.</p>`) : ""}
@@ -680,7 +680,7 @@ function finalControlHtml() {
   return `
   <div class="card">
     <h2>🏁 Final Jeopardy — ${esc(f.category)}</h2>
-    <div class="clue-box"><div class="label">On the TV right now</div><div class="cluetext">${esc(f.clue)}</div></div>
+    <div class="clue-box"><div class="label">On the TV right now</div><div class="cluetext">${fmtText(f.clue)}</div></div>
     ${fAnswerHtml}
     <div class="field-row">
       ${S.finalRevealed || f.unknown ? "" : `<button class="btn gold" id="btnFinalReveal">Reveal answer on TV</button>`}

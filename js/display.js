@@ -31,7 +31,7 @@ function renderDisplay() {
   if (S.phase === "setup" || !S.game || S.view === "welcome") {
     const title = (S.game && S.game.title) || "Jeopardy!";
     const size = title.length > 24 ? "6vw" : title.length > 13 ? "9vw" : "13vw";
-    view = `<div class="disp-view disp-bluebg"><div class="welcome-title" style="font-size:${size}">${esc(title.toUpperCase())}</div>
+    view = `<div class="disp-view disp-bluebg"><div class="welcome-title" style="font-size:${size}">${fmtText(title.toUpperCase())}</div>
       <div class="welcome-sub">Get ready to play</div></div>`;
   } else if (S.view === "bigscores") {
     view = `<div class="disp-view">
@@ -50,13 +50,13 @@ function renderDisplay() {
     const tie = champs.length > 1;
     const topScore = champs.length ? champs[0].score : 0;
     view = `<div class="disp-view">
-      <div class="winner-banner ${animateWin ? "pop" : ""}">${tie ? "IT'S A TIE!" : "🏆 WINNER 🏆"}</div>
+      <div class="winner-banner ${animateWin ? "pop" : ""}">${tie ? "IT'S A TIE!" : "WINNER"}</div>
       <div class="winner-name">${champs.map(t => esc(t.name)).join(" &nbsp;&amp;&nbsp; ")}</div>
       <div class="winner-score">${money(topScore)}</div>
       <div class="bigscores" style="margin-top:3vh">
         ${sorted.map(t => `
           <div class="bigscore-pod score-pod ${t.score === topScore ? "is-winner" : ""}">
-            <div class="sp-name">${t.score === topScore ? "🏆 " : ""}${esc(t.name)}</div>
+            <div class="sp-name">${esc(t.name)}</div>
             <div class="sp-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</div>
             ${t.players && t.players.length ? `<div class="sp-players">${esc(t.players.join(" · "))}</div>` : ""}
           </div>`).join("")}

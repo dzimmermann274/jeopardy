@@ -139,7 +139,8 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 .clue-cat { color: var(--value-gold); font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
   font-size: 2.4vw; letter-spacing: .08em; margin-bottom: 4vh; text-shadow: .06em .06em 0 #000; }
 .clue-text { font-family: Georgia, "Times New Roman", serif; font-weight: 700; text-transform: uppercase;
-  color: #fff; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw; }
+  color: #fff; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw;
+  word-spacing: 0.18em; }  /* roomier gaps between words so long clues read easier */
 .clue-answer { margin-top: 6vh; color: var(--value-gold); font-family: Georgia, serif; font-weight: 700;
   text-transform: uppercase; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw; }
 /* animate only on first reveal (.pop); re-renders (e.g. score edits) hold static */
@@ -191,10 +192,10 @@ body.display.is-fullscreen .fs-btn { display: none; }
 
 /* winner screen (display/TV) — same look as the score screen, with a champion banner */
 .winner-banner { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
-  font-size: 7vw; text-shadow: .06em .06em 0 #000; letter-spacing: .04em; }
+  font-size: 9.5vw; text-shadow: .06em .06em 0 #000; letter-spacing: .04em; }
 .winner-banner.pop { animation: pop .5s ease; }   /* animate on first entry only */
 .winner-name { font-family: Impact, "Arial Black", sans-serif; color: #fff; text-transform: uppercase;
-  font-size: 5vw; text-shadow: .06em .06em 0 #000, 0 0 40px rgba(6,12,233,.9); margin-top: 1vh; text-align: center; }
+  font-size: 7vw; text-shadow: .06em .06em 0 #000, 0 0 40px rgba(6,12,233,.9); margin-top: 1.5vh; text-align: center; }
 .winner-score { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
   font-size: 4vw; text-shadow: .06em .06em 0 #000; margin-top: .5vh; }
 .bigscore-pod.is-winner { border-color: var(--value-gold); box-shadow: 0 0 3vmin rgba(245,197,24,.6); }
