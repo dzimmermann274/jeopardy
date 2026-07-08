@@ -183,7 +183,7 @@ function startClueFly(fromRect, boardBg) {
   el.style.transform = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
   el.style.willChange = "transform";
   void el.offsetWidth;                          // commit the tile-sized starting state
-  el.style.transition = "transform 1s linear";  // classic Jeopardy: constant velocity/scale, ~1s
+  el.style.transition = "transform .85s linear";  // classic Jeopardy: constant velocity/scale
   el.style.transform = "none";
   let done = false;
   const finish = () => {
@@ -196,7 +196,7 @@ function startClueFly(fromRect, boardBg) {
   };
   const onEnd = (e) => { if (e.propertyName === "transform") finish(); };
   el.addEventListener("transitionend", onEnd);
-  setTimeout(finish, 1400);                     // fallback (> the 1s flight) so it can never get stuck
+  setTimeout(finish, 1250);                     // fallback (> the flight) so it can never get stuck
 }
 
 /* The curtain is a persistent overlay (kept OUTSIDE #app, which is rebuilt on
