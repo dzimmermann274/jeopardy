@@ -26,8 +26,10 @@ function welcomeHtml() {
 let lastAnswerKey = null;
 let winnerShown = false;   // same idea for the winner banner's pop
 
+let wantFs = false;   // opened for a fullscreen deploy but not yet in fullscreen
+
 function renderDisplay() {
-  document.body.className = "display" + (fsElement() ? " is-fullscreen" : "");
+  document.body.className = "display" + (fsElement() ? " is-fullscreen" : "") + (wantFs && !fsElement() ? " want-fs" : "");
   const r = currentRound();
   let view = "";
 
@@ -118,6 +120,7 @@ function renderDisplay() {
         </div>`).join("")}</div>` : ""}
     </div>
     <button class="fs-btn" id="btnFS">⛶ Fullscreen (F)</button>
+    ${wantFs && !fsElement() ? `<div class="fs-prompt">▶ Press any key or click<br>to go full screen</div>` : ""}
     <div class="timerbar-wrap" id="timerWrap"><div class="timerbar" id="timerBar"></div></div>`;
 
   document.getElementById("btnFS").onclick = goFullscreen;
@@ -225,12 +228,51 @@ function runTimerBar() {
   tick();
 }
 
+/* Toggle — wired to the F key and the ⛶ button. */
 function goFullscreen() {
   if (fsElement()) {
     (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document);
   } else {
-    const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    enterFullscreen();
   }
+}
+
+/* Enter only (never exit) — used by the auto-fullscreen path so a stray second
+   trigger can't bounce us back out. */
+function enterFullscreen() {
+  if (fsElement()) return;
+  const el = document.documentElement;
+  try {
+    if (el.requestFullscreen) { const p = el.requestFullscreen(); if (p && p.catch) p.catch(() => {}); }
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  } catch (e) { /* blocked until a gesture — the listeners below handle that */ }
+}
+
+/* Make a fullscreen deploy actually enter fullscreen MODE (not just fill the
+   desktop). Chrome won't let a normal site force fullscreen with zero gesture,
+   so: (1) try immediately — succeeds only if the site is allow-listed via the
+   AutomaticFullscreenAllowedForUrls policy; (2) otherwise the FIRST click or
+   key anywhere in this window does it (a prompt says so). Broadened from just
+   "F" so the host doesn't have to know the shortcut. */
+function armAutoFullscreen() {
+  wantFs = true;
+  enterFullscreen();                     // zero-gesture best effort (works only if allow-listed)
+  const go = (e) => {
+    // ignore lone modifier keys so e.g. tabbing away doesn't count
+    if (e && e.type === "keydown" && ["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) return;
+    if (e) e.stopPropagation();          // don't also fire the ⛶ button / F toggle for this same event
+    enterFullscreen();                   // a real click/key is a valid gesture, so this takes
+    // finish() runs from fullscreenchange once we're actually in — so if a
+    // request is somehow refused, the prompt stays up and the next click retries.
+  };
+  const finish = () => {
+    document.removeEventListener("click", go, true);
+    document.removeEventListener("keydown", go, true);
+    if (wantFs) { wantFs = false; renderDisplay(); }
+  };
+  document.addEventListener("click", go, true);     // capture, so it beats the ⛶ button's own handler
+  document.addEventListener("keydown", go, true);
+  document.addEventListener("fullscreenchange", () => { if (fsElement()) finish(); });
+  document.addEventListener("webkitfullscreenchange", () => { if (fsElement()) finish(); });
+  renderDisplay();                       // show the prompt
 }

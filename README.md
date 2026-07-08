@@ -61,6 +61,13 @@ Double`) is still auto-detected and supported.
 
 **Display setup** (button in the header, any time) also has **fade to the title screen**,
 **fade to black**, and **show the game** as failsafes if anything looks wrong on the TV mid-game.
+Those same three failsafes are also duplicated as a bar directly on the control panel.
+
+**True fullscreen:** a fullscreen deploy fills the external screen and the display window enters
+real fullscreen mode on the **first click or key press** in it (browsers won't let a normal site
+force fullscreen with no gesture). With the black-first flow this is invisible — only black shows
+while it happens. To make it fully zero-touch, allow-list the site for automatic fullscreen via the
+Chrome `AutomaticFullscreenAllowedForUrls` policy; the window then goes fullscreen on its own.
 
 Use **🏆 Announce winner** (top of the control panel) at any point to show a final
 results screen on the TV with the champion highlighted (ties handled); it asks "are you

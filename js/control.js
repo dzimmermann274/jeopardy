@@ -21,10 +21,14 @@ let liveAnswerDraft = "";                 // host-typed answer (UNKNOWN question
 let liveAnswerOpen = false;               // keep the override <details> open across re-renders
 
 /* Open (or reuse) the single display window. `features` is a window.open
-   feature string; the default is the classic small popup on the main screen. */
-function openDisplayWindow(features) {
-  displayWin = window.open(location.pathname + "#display", "ppiJeopardyDisplay",
+   feature string; the default is the classic small popup on the main screen.
+   `wantFs` opens it with the fullscreen-intent flag so it enters true fullscreen
+   mode (see armAutoFullscreen in display.js). */
+function openDisplayWindow(features, wantFs) {
+  const hash = wantFs ? "#display&fs=1" : "#display";
+  displayWin = window.open(location.pathname + hash, "ppiJeopardyDisplay",
     features || "width=1280,height=720");
+  try { if (displayWin) displayWin.focus(); } catch (e) {}   // focus it so the first key/click there triggers fullscreen
   setTimeout(send, 600);  // give it a moment, then push state (it also says hello)
   return displayWin;
 }
@@ -89,6 +93,23 @@ function centeredFeatures(scr, w, h) {
    typed team names first so re-rendering the setup screen never wipes them. */
 function setStage(stage) { collectTeamNames(); update(() => { S.stage = stage; }); if (screensOv) renderScreensDialog(); }
 
+/* A compact copy of the fade failsafes, shown directly on the control panel (in
+   addition to the Display setup dialog) so they're always one click away. */
+function failsafeBarHtml() {
+  const open = displayLooksOpen();
+  const stage = S.stage || "game";
+  return `<div class="failsafe-bar">
+    <span class="failsafe-label">Display failsafes</span>
+    <button class="btn small ${stage === "title" ? "gold" : ""}" data-stage="title" ${open ? "" : "disabled"}>Fade to title</button>
+    <button class="btn small ${stage === "black" ? "gold" : ""}" data-stage="black" ${open ? "" : "disabled"}>Fade to black</button>
+    <button class="btn small ${stage === "game" ? "primary" : ""}" data-stage="game" ${open ? "" : "disabled"}>Show the game</button>
+    ${open ? "" : `<span class="hint" style="margin-left:2px">open a display first</span>`}
+  </div>`;
+}
+function wireFailsafeBar() {
+  app.querySelectorAll("[data-stage]").forEach(b => b.onclick = () => setStage(b.dataset.stage));
+}
+
 /* Deploy the game onto the external display. `stage` is the curtain the new
    window opens with (use "black" for the safe black-first flow); `fullscreen`
    fills the whole screen and best-effort auto-fullscreens it. */
@@ -98,20 +119,11 @@ async function deployExternal({ fullscreen, stage }) {
   if (!scr) { if (screensOv) renderScreensDialog(); return; }
   collectTeamNames();
   update(() => { S.stage = stage || "game"; });   // curtain set before the window exists; it gets it via the hello handshake
-  const win = openDisplayWindow(fullscreen ? fillFeatures(scr) : centeredFeatures(scr, 1280, 720));
-  if (fullscreen && win) {
-    // Best-effort borderless fullscreen on that screen. Chrome may block a
-    // non-gesture fullscreen on a freshly opened window; if so the window still
-    // fills the external screen and the host taps F (or the ⛶ button already on
-    // the display) to go borderless — seamless because only black is showing.
-    setTimeout(() => {
-      try {
-        const el = win.document && win.document.documentElement;
-        const p = el && el.requestFullscreen && el.requestFullscreen({ screen: scr });
-        if (p && p.catch) p.catch(() => {});
-      } catch (e) { /* fall back to manual F / ⛶ */ }
-    }, 800);
-  }
+  // A fullscreen deploy fills the external screen AND asks the window to enter
+  // true fullscreen mode: instantly if this site is allow-listed for automatic
+  // fullscreen, otherwise on the first click/key in that window (it shows a
+  // prompt). Seamless with stage:"black" — only black is on screen meanwhile.
+  openDisplayWindow(fullscreen ? fillFeatures(scr) : centeredFeatures(scr, 1280, 720), fullscreen);
   if (screensOv) renderScreensDialog();
 }
 
@@ -182,11 +194,11 @@ function renderScreensDialog() {
       <div class="screens-section">
         <div class="sec-title">External display — ${esc(label)}</div>
         <div class="screens-btns">
-          <button class="btn primary" data-act="ext-black">Deploy a black screen to the external display</button>
-          <button class="btn" data-act="ext-full">Deploy the game full screen on the external display</button>
+          <button class="btn primary" data-act="ext-black">Deploy black, full screen, on the external display</button>
+          <button class="btn" data-act="ext-full">Deploy the game, full screen, on the external display</button>
           <button class="btn" data-act="ext-normal">Deploy a normal window on the external display</button>
         </div>
-        <p class="screens-note"><b>Safest:</b> deploy the black screen first, press <b>F</b> in that window (or click ⛶) to make it borderless while only black shows, then use <b>“Show the game”</b> below.</p>
+        <p class="screens-note"><b>Recommended:</b> deploy <b>black full screen</b> first. The new window enters true full screen on the first click or key press (only black is showing), so no browser edges ever show — then <b>Fade to the title</b> or <b>Show the game</b> from the failsafes below.</p>
       </div>`;
     } else if (screensPermDenied) {
       externalHtml = `
@@ -438,6 +450,7 @@ function renderSetup() {
         <button class="btn" id="btnOpenDisplay">Open display window</button>
         <button class="btn primary" id="btnStart" ${S.game ? "" : "disabled"}>Start the game ▶</button>
       </div>
+      ${failsafeBarHtml()}
       ${S.game ? "" : `<p class="hint">Load questions first to enable Start.</p>`}
     </div>
   </div>`;
@@ -490,6 +503,7 @@ function renderSetup() {
   });
   document.getElementById("btnScreens").onclick = () => { collectTeamNames(); openScreensDialog(); };
   document.getElementById("btnOpenDisplay").onclick = () => { collectTeamNames(); openDisplay(); renderControl(); };
+  wireFailsafeBar();
   document.getElementById("btnStart").onclick = () => {
     collectTeamNames();
     ++sheetReqToken;               // a game is starting; drop any pending sheet load
@@ -543,6 +557,7 @@ function renderPlay() {
       </div>
     </div>
     ${otherControlBannerHtml()}
+    ${failsafeBarHtml()}
     ${mainHtml}
     <div class="card">
       <h2>Scores</h2>
@@ -563,6 +578,7 @@ function renderPlay() {
 
   document.getElementById("btnReopenDisplay").onclick = () => { openDisplay(); renderControl(); };
   document.getElementById("btnScreens").onclick = () => openScreensDialog();
+  wireFailsafeBar();
   const bScores = document.getElementById("btnShowScores");
   if (bScores) bScores.onclick = () =>
     update(() => {

@@ -14,6 +14,10 @@ if (IS_DISPLAY) {
   });
   document.addEventListener("fullscreenchange", renderDisplay);
   document.addEventListener("webkitfullscreenchange", renderDisplay);
+  // Opened with "#display&fs=1" (a fullscreen deploy from the control panel):
+  // enter true fullscreen automatically — on the first key/click, or with no
+  // interaction at all if this site is allow-listed for automatic fullscreen.
+  if (location.hash.includes("fs=1")) armAutoFullscreen();
 } else {
   document.title = "Jeopardy — Control Panel";
   renderControl();   // if a saved game exists, the setup screen offers to resume it
