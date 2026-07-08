@@ -7,7 +7,7 @@
    display window is a pure renderer of received snapshots.
    ============================================================ */
 
-const IS_DISPLAY = location.hash === "#display";
+const IS_DISPLAY = location.hash.startsWith("#display");
 const CHANNEL = new BroadcastChannel("ppi-jeopardy-v1");
 const SAVE_KEY = "ppi-jeopardy-state-v1";
 const app = document.getElementById("app");

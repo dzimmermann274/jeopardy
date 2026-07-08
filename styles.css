@@ -204,7 +204,18 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
   border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 8px 14px; font-size: 14px;
   opacity: 0; transition: opacity .3s; }
 body.display:hover .fs-btn { opacity: 1; }
+body.display.want-fs .fs-btn { opacity: 1; }        /* keep it visible while we're waiting to go fullscreen */
 body.display.is-fullscreen .fs-btn { display: none; }
+
+/* prompt shown after a fullscreen deploy until the first click/key enters
+   true fullscreen (a normal website can't force fullscreen without a gesture) */
+.fs-prompt { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 60;
+  background: rgba(0,0,0,.72); color: #fff; border: 1px solid rgba(255,255,255,.45); border-radius: 14px;
+  padding: 2.4vh 3.4vw; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 2.4vw;
+  line-height: 1.35; letter-spacing: .03em; text-align: center; pointer-events: none;
+  animation: fsPulse 1.5s ease-in-out infinite; }
+@keyframes fsPulse { 0%, 100% { opacity: .58; } 50% { opacity: 1; } }
+body.display.is-fullscreen .fs-prompt { display: none; }
 
 /* fade curtain on the display — the fade-to-black / fade-to-title / show-the-game
    failsafes and the black-screen-first deploy flow. A persistent overlay over
@@ -242,6 +253,11 @@ body.display.is-fullscreen .fs-btn { display: none; }
 .modal-input { width: 100%; background: #191c2b; color: var(--panel-text); border: 1px solid #3a3f58;
   border-radius: 8px; padding: 10px 12px; font-size: 15px; margin-bottom: 16px; }
 .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* failsafe bar — the fade controls duplicated directly on the control panel */
+.failsafe-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: #191c2b; border: 1px solid #3a3f58; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; }
+.failsafe-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--panel-dim); margin-right: 4px; }
 
 /* Display setup dialog (screen deploy + fade failsafes) */
 .modal-box.screens-dialog { max-width: 560px; }
