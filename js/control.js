@@ -19,6 +19,15 @@ let ddDraft = { team: 0, wager: "" };     // Daily Double form draft
 let finalWagerDrafts = null;              // array of strings, one per team
 let liveAnswerDraft = "";                 // host-typed answer (UNKNOWN questions / overrides)
 let liveAnswerOpen = false;               // keep the override <details> open across re-renders
+let categoriesShown = false;              // the category intro has played this game (resets on reload / new game)
+
+/* Fire the full-screen category reveal on the display, and grey the button. */
+function showCategories() {
+  collectTeamNames();
+  categoriesShown = true;
+  CHANNEL.postMessage({ type: "play-intro" });   // transient — not part of saved state
+  renderControl();
+}
 
 /* Open (or reuse) the single display window. `geom` is an optional
    {left,top,width,height}; without it, a default 1280x720 popup. `wantFs` sets
@@ -630,7 +639,8 @@ function renderPlay() {
         <button class="btn small" id="btnScreens">Display setup</button>
         ${isWinner
           ? `<button class="btn small" id="btnWinnerBack">◀ Back to game</button>`
-          : `<button class="btn small" id="btnShowScores">${S.view === "bigscores" ? "◀ Back to game" : "Show scores on TV"}</button>
+          : `<button class="btn small ${categoriesShown ? "is-done" : "gold"}" id="btnShowCats">Show categories</button>
+        <button class="btn small" id="btnShowScores">${S.view === "bigscores" ? "◀ Back to game" : "Show scores on TV"}</button>
         ${S.game.rounds.length > S.roundIdx + 1 && !isFinal ? `<button class="btn small" id="btnNextRound">Next round →</button>` : ""}
         ${S.game.final && !isFinal && S.view !== "bigscores" ? `<button class="btn small gold" id="btnFinal">Final Jeopardy</button>` : ""}
         <button class="btn small gold" id="btnAnnounceWinner">🏆 Announce winner</button>`}
@@ -660,6 +670,12 @@ function renderPlay() {
   document.getElementById("btnReopenDisplay").onclick = () => { openDisplay(); renderControl(); };
   document.getElementById("btnScreens").onclick = () => openScreensDialog();
   wireFailsafeBar();
+  const bCats = document.getElementById("btnShowCats");
+  if (bCats) bCats.onclick = () => {
+    if (!categoriesShown) return showCategories();
+    customConfirm("The categories were already shown this game. Show them again?", { okText: "Show again" })
+      .then(ok => { if (ok) showCategories(); });
+  };
   const bScores = document.getElementById("btnShowScores");
   if (bScores) bScores.onclick = () =>
     update(() => {
@@ -707,6 +723,7 @@ function renderPlay() {
       if (!ok) return;
       clearSavedGame();
       finalWagerDrafts = null;
+      categoriesShown = false;                 // a fresh game can show its categories again
       update(() => { S = freshState(); });
     });
   };
@@ -972,9 +989,9 @@ function clueControlHtml(cl, isDD) {
     <div class="clue-box">
       <div class="label">On the TV right now</div>
       <div class="cluetext">${fmtText(cl.clue)}</div>
-      ${cl.image ? (window.__imgErrorSrc === cl.image
-        ? `<p class="hint" style="margin-top:8px;color:#ff9b9b">📷⚠️ The picture FAILED to load on the TV — describe it aloud, or skip this one.</p>`
-        : `<p class="hint" style="margin-top:8px">📷 This question has a picture — it's on the TV under the clue.</p>`) : ""}
+      ${imageList(cl.image).length ? (imageList(cl.image).includes(window.__imgErrorSrc)
+        ? `<p class="hint" style="margin-top:8px;color:#ff9b9b">📷⚠️ A picture FAILED to load on the TV — describe it aloud, or skip this one.</p>`
+        : `<p class="hint" style="margin-top:8px">📷 This question has ${imageList(cl.image).length > 1 ? "pictures" : "a picture"} — ${imageList(cl.image).length > 1 ? "they're" : "it's"} on the TV under the clue.</p>`) : ""}
     </div>
     ${answerHtml}
     <div class="field-row">

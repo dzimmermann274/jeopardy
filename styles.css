@@ -37,6 +37,8 @@ body.control { background: var(--panel-bg); color: var(--panel-text); min-height
 .btn.bad { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 700; }
 .btn.gold { background: var(--value-gold); border-color: var(--value-gold); color: #333; font-weight: 700; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.is-done { opacity: .5; }                 /* greyed but still clickable (e.g. categories already shown) */
+.btn.is-done:hover { opacity: .7; }
 .btn.small { padding: 5px 10px; font-size: 13px; }
 .card { background: var(--panel-card); border: 1px solid #3a3f58; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
 .card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--panel-dim); margin-bottom: 12px; }
@@ -143,10 +145,10 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
    overflows, so a very long clue never clips the category/first lines */
 .clue-inner { display: flex; flex-direction: column; align-items: center;
   justify-content: center; justify-content: safe center; width: 100%; max-height: 100%; }
-/* image clues: the picture flex-fills the height left over after the text, so it's
-   as large as possible (vertical or horizontal) and text is never clipped */
+/* image clues: the picture(s) flex-fill the height left over after the text, so
+   they're as large as possible (vertical or horizontal) and text is never clipped */
 .clue-inner.has-image { height: 100%; }
-.clue-inner.has-image .clue-img { flex: 1 1 auto; min-height: 0; }
+.clue-inner.has-image .clue-imgs { flex: 1 1 auto; min-height: 0; }
 .clue-cat { color: var(--value-gold); font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
   font-size: 2.4vw; letter-spacing: .08em; margin-bottom: 2.4vh; text-shadow: .06em .06em 0 #000; }
 .clue-text { font-family: Georgia, "Times New Roman", serif; font-weight: 700; text-transform: uppercase;
@@ -158,13 +160,16 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 /* animate only on first reveal (.pop); re-renders (e.g. score edits) hold static */
 .clue-answer.pop { animation: pop .4s ease; }
 /* pictures as large as possible — vertical images are height-bound, horizontal
-   are width-bound, so cap both generously; text may sit tight above/below.
-   No frame/background: with object-fit:contain in a flex-filled box, a solid
-   backing would show as letterbox bands, so the photo sits cleanly on the blue */
-.clue-img { max-width: 86vw; max-height: 64vh; margin-top: 1.6vh; object-fit: contain; }
-/* once the answer is revealed it needs room below, so the picture shrinks a bit
+   are width-bound. ONE picture fills the row; TWO sit side by side. No frame:
+   object-fit:contain sits the photo cleanly on the blue. */
+.clue-imgs { display: flex; gap: 1.6vw; justify-content: center; align-items: center;
+  width: 100%; min-height: 0; margin-top: 1.6vh; }
+.clue-img { max-width: 86vw; max-height: 64vh; object-fit: contain; flex: 0 1 auto; }
+.clue-inner.has-image .clue-imgs .clue-img { max-height: 100%; }   /* fill the flex-filled row */
+.clue-imgs.multi .clue-img { max-width: 46vw; }                    /* two pictures share the width */
+/* once the answer is revealed it needs room below, so pictures shrink a bit
    (still large — Danny prefers big images even if text is tight) */
-.clue-inner.revealed .clue-img { max-height: 46vh; }
+.clue-inner.revealed .clue-imgs { max-height: 46vh; }
 .clue-img-fail { margin-top: 4vh; background: rgba(0,0,0,.4); border: .3vmin dashed rgba(255,255,255,.5);
   border-radius: 1vmin; padding: 2vh 3vw; font-size: 2vw; color: #ffd7d7; }
 @keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -230,6 +235,30 @@ body.display.is-fullscreen .fs-prompt { display: none; }
 .disp-curtain .curtain-black { background: #000; }
 .disp-curtain .curtain-title { display: flex; }
 .disp-curtain .curtain-title .disp-view { flex: 1; }
+
+/* category intro reveal — a full-screen "here are today's categories" animation */
+.cat-intro { position: fixed; inset: 0; z-index: 70; overflow: hidden; display: flex;
+  align-items: center; justify-content: center; opacity: 1; transition: opacity .6s ease;
+  background: radial-gradient(ellipse at center, #1a20f5 0%, var(--board-blue) 45%, #030661 100%); }
+.cat-intro.cat-intro-out { opacity: 0; }
+/* a slow gold glow sweeping behind the card for a little life */
+.cat-intro::before { content: ""; position: absolute; width: 140vmax; height: 140vmax;
+  background: radial-gradient(circle, rgba(255,204,0,.10) 0%, rgba(255,204,0,0) 55%);
+  animation: catGlow 6s ease-in-out infinite; }
+@keyframes catGlow { 0%,100% { transform: translate(-18%, -12%) scale(1); } 50% { transform: translate(18%, 12%) scale(1.15); } }
+.cat-intro-card { position: relative; text-align: center; max-width: 94vw; padding: 0 3vw;
+  animation: catCard var(--dwell, 1750ms) cubic-bezier(.2,.75,.2,1) both; }
+.cat-intro-count { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
+  letter-spacing: .22em; color: var(--value-gold); font-size: 2.6vw; margin-bottom: 2.4vh;
+  text-shadow: .05em .05em 0 #000; }
+.cat-intro-name { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase; color: #fff;
+  line-height: 1.03; text-shadow: .05em .05em 0 #000, 0 0 6vmin rgba(6,12,233,.95); -webkit-text-stroke: 2px #000; }
+@keyframes catCard {
+  0%   { opacity: 0; transform: translateY(7vh) scale(.82); filter: blur(7px); }
+  13%  { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  84%  { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: translateY(-6vh) scale(1.07); filter: blur(4px); }
+}
 
 /* winner screen (display/TV) — same look as the score screen, with a champion banner */
 .winner-banner { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);

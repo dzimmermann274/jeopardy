@@ -121,6 +121,15 @@ function resolveImage(cellValue, imageMap) {
   return imageMap[v] || "";
 }
 
+/* An image cell may hold ONE image, or TWO separated by a comma ("3, 7", or a
+   URL then another). Each part is a bank ID or a pasted URL. Returns the list of
+   resolved URLs (empty, one, or more). */
+function resolveImages(cellValue, imageMap) {
+  const v = String(cellValue || "").trim();
+  if (!v) return [];
+  return v.split(",").map(p => resolveImage(p.trim(), imageMap)).filter(Boolean);
+}
+
 /* Formula error text from the category tabs ("⚠ ID not found") — never
    show it as a question or answer. */
 function isNotFound(s) { return /id\s*not\s*found/i.test(s); }
@@ -190,9 +199,12 @@ function parseCategoryTab(tabName, ws, imageMap, bankFlags) {
     // the host types the answer live during the game.
     const unknown = !answer || /^unknown\b/i.test(answer);
     const imgRaw = imgCol !== -1 ? (r[imgCol] || "").trim() : "";
-    const image = resolveImage(imgRaw, imageMap);
-    if (imgRaw && !image) {
+    const rawImgParts = imgRaw ? imgRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+    const images = resolveImages(imgRaw, imageMap);   // one or two (comma-separated) pictures
+    if (rawImgParts.length && !images.length) {
       warnings.push(`${rowLabel}: Image ID "${imgRaw}" isn't in the 🖼 Image Bank — the picture won't show.`);
+    } else if (images.length < rawImgParts.length) {
+      warnings.push(`${rowLabel}: one of the images ("${imgRaw}") isn't in the 🖼 Image Bank — only the other will show.`);
     }
     // "Answer replaces question?" is set in the bank and matched here by Question ID.
     const qid = qidCol !== -1 ? normId(r[qidCol]) : "";
@@ -201,7 +213,7 @@ function parseCategoryTab(tabName, ws, imageMap, bankFlags) {
       clue,
       answer: unknown ? "" : answer,
       unknown,
-      image,
+      image: images,       // array of 0/1/2 URLs (imageList() normalizes on read)
       dd: false,
       replace: !!(qid && bankFlags && bankFlags[qid]),
     });

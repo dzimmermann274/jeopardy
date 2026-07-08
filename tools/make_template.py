@@ -116,7 +116,7 @@ def make_instructions(wb):
         ("", "body"),
         ("STEP 2 — (OPTIONAL) ADD PICTURES IN THE 🖼 IMAGE BANK", "section"),
         ("Paste image links in the Image Bank tab, one per row, each with an Image ID. Easiest source: upload the picture to Google Drive → right-click it → Share → \"Anyone with the link\" → Copy link → paste here. Regular image links from the web work too.", "body"),
-        ("Attach a picture to a question by putting its Image ID in the question's Image ID column (in the Question Bank, or on a category tab). The picture appears on the TV under the question.", "body"),
+        ("Attach a picture to a question by putting its Image ID in the question's Image ID column (in the Question Bank, or on a category tab). The picture appears on the TV under the question. For TWO pictures on one question, put both Image IDs separated by a comma (e.g. 3, 7) — they show side by side.", "body"),
         ("", "body"),
         ("STEP 3 — BUILD THE CATEGORIES", "section"),
         ("Each colored \"Category\" tab is ONE category on the game board (up to 6). Double-click the tab and RENAME it — the tab's name is exactly what appears on the board. (\"Category 1\" → \"80s Movies\")", "body"),
