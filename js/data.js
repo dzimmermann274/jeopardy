@@ -130,6 +130,22 @@ function resolveImages(cellValue, imageMap) {
   return v.split(",").map(p => resolveImage(p.trim(), imageMap)).filter(Boolean);
 }
 
+/* An image cell can optionally use different pictures on the answer: write the
+   question image ID(s), then "THEN" (caps), then the answer image ID(s) — e.g.
+   "6, 5THEN7" = 6 & 5 on the question, 7 on the answer. Each side takes one or
+   two images (or none). No "THEN" -> the same picture(s) show on both.
+   Returns { question:[urls], answer:[urls]|null }  (answer null = same as question). */
+function parseImagePair(cellValue, imageMap) {
+  const v = String(cellValue || "").trim();
+  const i = v.indexOf("THEN");
+  if (i === -1) return { question: resolveImages(v, imageMap), answer: null };
+  return { question: resolveImages(v.slice(0, i), imageMap), answer: resolveImages(v.slice(i + 4), imageMap) };
+}
+/* Count of image IDs/URLs a raw cell mentions (for "one of them didn't resolve" warnings). */
+function countImageRefs(raw) {
+  return String(raw || "").split(/THEN|,/).map(s => s.trim()).filter(Boolean).length;
+}
+
 /* Formula error text from the category tabs ("⚠ ID not found") — never
    show it as a question or answer. */
 function isNotFound(s) { return /id\s*not\s*found/i.test(s); }
@@ -199,12 +215,13 @@ function parseCategoryTab(tabName, ws, imageMap, bankFlags) {
     // the host types the answer live during the game.
     const unknown = !answer || /^unknown\b/i.test(answer);
     const imgRaw = imgCol !== -1 ? (r[imgCol] || "").trim() : "";
-    const rawImgParts = imgRaw ? imgRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
-    const images = resolveImages(imgRaw, imageMap);   // one or two (comma-separated) pictures
-    if (rawImgParts.length && !images.length) {
+    const pair = parseImagePair(imgRaw, imageMap);    // { question, answer|null } — one or two each, "THEN" splits
+    const rawCount = countImageRefs(imgRaw);
+    const gotCount = pair.question.length + (pair.answer ? pair.answer.length : 0);
+    if (rawCount && !gotCount) {
       warnings.push(`${rowLabel}: Image ID "${imgRaw}" isn't in the 🖼 Image Bank — the picture won't show.`);
-    } else if (images.length < rawImgParts.length) {
-      warnings.push(`${rowLabel}: one of the images ("${imgRaw}") isn't in the 🖼 Image Bank — only the other will show.`);
+    } else if (gotCount < rawCount) {
+      warnings.push(`${rowLabel}: one of the images ("${imgRaw}") isn't in the 🖼 Image Bank — only the others will show.`);
     }
     // "Answer replaces question?" is set in the bank and matched here by Question ID.
     const qid = qidCol !== -1 ? normId(r[qidCol]) : "";
@@ -213,7 +230,8 @@ function parseCategoryTab(tabName, ws, imageMap, bankFlags) {
       clue,
       answer: unknown ? "" : answer,
       unknown,
-      image: images,       // array of 0/1/2 URLs (imageList() normalizes on read)
+      image: pair.question,      // question picture(s): array of 0/1/2 URLs
+      answerImage: pair.answer,  // answer picture(s), or null = same as the question
       dd: false,
       replace: !!(qid && bankFlags && bankFlags[qid]),
     });

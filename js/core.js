@@ -29,6 +29,7 @@ function freshState() {
     finalRevealed: false,
     finalAwarded: {},        // teamIdx -> "+"|"-" for final (double-award guard)
     timer: null,             // {startedAt, seconds}
+    photoZoom: false,        // blow the current clue's photo(s) up to fill the TV
     stage: "game",           // display curtain, independent of the game view:
                              //   "game"  = show the live game (no curtain)
                              //   "black" = fade the TV to solid black
@@ -130,6 +131,13 @@ function fmtText(s) { return esc(s).split("##").join("<br>"); }
 function imageList(image) {
   if (Array.isArray(image)) return image.filter(Boolean);
   return image ? [image] : [];
+}
+/* The images to show for a clue right now: the answer's images once revealed (if
+   the sheet gave separate ones via "THEN"), otherwise the question's images. */
+function currentClueImages(cl, revealed) {
+  if (!cl) return [];
+  const set = (revealed && cl.answerImage != null) ? cl.answerImage : cl.image;
+  return imageList(set);
 }
 /* The team(s) with the top score — used by the winner screen (handles ties). */
 function winnersOf(teams) {

@@ -753,6 +753,7 @@ function renderPlay() {
           S.revealed = false;
           S.awarded = {};
           S.timer = null;
+          S.photoZoom = false;                 // start each clue un-zoomed
           if (clue.dd) { S.view = "dd"; S.dd = { teamIdx: null, wager: null }; }
           else { S.view = "clue"; S.dd = null; }
         });
@@ -767,12 +768,14 @@ function renderPlay() {
     });
     const bReveal = document.getElementById("btnReveal");
     if (bReveal) bReveal.onclick = () => update(() => { S.revealed = true; S.timer = null; });
+    const bZoom = document.getElementById("btnPhotoZoom");
+    if (bZoom) bZoom.onclick = () => update(() => { S.photoZoom = !S.photoZoom; });
     const bBack = document.getElementById("btnBack");
     if (bBack) bBack.onclick = () => {
       liveAnswerDraft = ""; liveAnswerOpen = false;
       update(() => {
         const c = activeClue(); if (c) c.used = true;
-        S.view = "board"; S.active = null; S.revealed = false; S.dd = null; S.awarded = {}; S.timer = null;
+        S.view = "board"; S.active = null; S.revealed = false; S.dd = null; S.awarded = {}; S.timer = null; S.photoZoom = false;
       });
     };
     /* live-typed answers (UNKNOWN questions, or overriding a preset one) */
@@ -958,6 +961,7 @@ function clueControlHtml(cl, isDD) {
   }
   const amount = S.dd && S.dd.wager != null ? S.dd.wager : cl.value;
   const ddTeam = S.dd && S.dd.teamIdx != null ? S.teams[S.dd.teamIdx] : null;
+  const zoomImgs = currentClueImages(cl, S.revealed);   // picture(s) currently on the TV (answer set once revealed)
   let answerHtml;
   if (S.revealed) {
     answerHtml = `<div class="answer-shown">✅ Answer (now on the TV): &nbsp;${fmtText(cl.answer)}</div>`;
@@ -989,9 +993,9 @@ function clueControlHtml(cl, isDD) {
     <div class="clue-box">
       <div class="label">On the TV right now</div>
       <div class="cluetext">${fmtText(cl.clue)}</div>
-      ${imageList(cl.image).length ? (imageList(cl.image).includes(window.__imgErrorSrc)
+      ${zoomImgs.length ? (zoomImgs.includes(window.__imgErrorSrc)
         ? `<p class="hint" style="margin-top:8px;color:#ff9b9b">📷⚠️ A picture FAILED to load on the TV — describe it aloud, or skip this one.</p>`
-        : `<p class="hint" style="margin-top:8px">📷 This question has ${imageList(cl.image).length > 1 ? "pictures" : "a picture"} — ${imageList(cl.image).length > 1 ? "they're" : "it's"} on the TV under the clue.</p>`) : ""}
+        : `<p class="hint" style="margin-top:8px">📷 This question has ${zoomImgs.length > 1 ? "pictures" : "a picture"} — ${zoomImgs.length > 1 ? "they're" : "it's"} on the TV under the clue.</p>`) : ""}
     </div>
     ${answerHtml}
     <div class="field-row">
@@ -1000,6 +1004,7 @@ function clueControlHtml(cl, isDD) {
         ? `<button class="btn" id="btnTimer">✖ Cancel timer</button>`
         : `<button class="btn" id="btnTimer">🔊 30-second timer</button>
            <button class="btn" id="btnTimerSilent">🔇 Timer — no sound</button>`}`}
+      ${zoomImgs.length ? `<button class="btn ${S.photoZoom ? "gold" : ""}" id="btnPhotoZoom">${S.photoZoom ? "◀ Back to the question" : `Show photo${zoomImgs.length > 1 ? "s" : ""} full screen`}</button>` : ""}
       <button class="btn primary" id="btnBack">Done — back to board</button>
     </div>
     ${S.revealed ? `
