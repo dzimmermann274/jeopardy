@@ -59,7 +59,12 @@ function centeredGeom(scr, w, h) {
   return { left: Math.round(scr.availLeft + (scr.availWidth - w) / 2), top: Math.round(scr.availTop + (scr.availHeight - h) / 2), width: w, height: h };
 }
 
-function displayLooksOpen() { return displayWin && !displayWin.closed; }
+/* Open if we hold a live window reference OR a display announced itself over the
+   channel recently (survives a control-panel reload, when displayWin is null). */
+function displayLooksOpen() {
+  if (displayWin && !displayWin.closed) return true;
+  return (Date.now() - lastDisplayBeat) < DISPLAY_BEAT_MS;
+}
 
 /* ---------------- multi-screen deploy (Chrome / Edge only) ----------------
    The Window Management API (getScreenDetails) lets us find the external

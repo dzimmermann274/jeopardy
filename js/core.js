@@ -74,12 +74,37 @@ function update(mutator) { mutator(); send(); renderControl(); }
    two control tabs would fight over the display and the save. */
 let otherControlDetected = false;
 
+/* Heartbeat-based "is a display open?" detection. The window.open reference
+   (displayWin) is lost when the control panel reloads, so instead an open
+   display keeps announcing itself over the channel ("display-alive" every
+   second + an instant reply to "ping-display"); the control trusts a recent
+   beat. This is what makes display/fullscreen detection survive a reload. */
+let lastDisplayBeat = 0;
+const DISPLAY_BEAT_MS = 2500;         // consider a display gone after ~2 missed beats
+let displayOpenKnown = false;         // last open-state the control panel rendered
+function noteDisplaySeen() { lastDisplayBeat = Date.now(); refreshDisplayOpenState(); }
+/* Re-render the control panel only when the display's open/closed state actually
+   flips — and never while the host is typing (would yank focus; caught next tick). */
+function refreshDisplayOpenState() {
+  if (IS_DISPLAY) return;
+  const open = displayLooksOpen();
+  if (open === displayOpenKnown) return;
+  const el = document.activeElement;
+  if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+  displayOpenKnown = open;
+  collectTeamNames();
+  renderControl();
+  if (screensOv) renderScreensDialog();
+}
+
 CHANNEL.onmessage = (ev) => {
   const msg = ev.data;
   if (IS_DISPLAY) {
     if (msg.type === "state") { S = msg.state; renderDisplay(); }
+    else if (msg.type === "ping-display") { CHANNEL.postMessage({ type: "display-alive" }); }
   } else {
-    if (msg.type === "hello") { CHANNEL.postMessage({ type: "state", state: snapshot() }); }
+    if (msg.type === "hello") { CHANNEL.postMessage({ type: "state", state: snapshot() }); noteDisplaySeen(); }
+    else if (msg.type === "display-alive") { noteDisplaySeen(); }
     else if (msg.type === "control-hello") { CHANNEL.postMessage({ type: "control-active" }); }
     else if (msg.type === "control-active") {
       if (!otherControlDetected) { otherControlDetected = true; renderControl(); }

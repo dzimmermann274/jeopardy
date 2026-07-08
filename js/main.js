@@ -13,7 +13,9 @@ if (IS_DISPLAY) {
   const stageMatch = location.hash.match(/[?&]stage=([a-z]+)/);
   if (stageMatch) S.stage = stageMatch[1];
   renderDisplay();
-  CHANNEL.postMessage({ type: "hello" });   // ask the control window for current state
+  CHANNEL.postMessage({ type: "hello" });          // ask the control window for current state
+  CHANNEL.postMessage({ type: "display-alive" });  // announce presence right away
+  setInterval(() => CHANNEL.postMessage({ type: "display-alive" }), 1000);  // heartbeat: the control trusts a recent beat
   document.addEventListener("keydown", (e) => {
     if (e.key.toLowerCase() === "f") goFullscreen();
   });
@@ -30,6 +32,8 @@ if (IS_DISPLAY) {
   // Check for another open control tab before claiming the display: broadcast
   // hello, and only push our state if nobody objects within half a second.
   CHANNEL.postMessage({ type: "control-hello" });
+  CHANNEL.postMessage({ type: "ping-display" });   // ask any already-open display to announce itself (survives a reload)
   setTimeout(() => { if (!otherControlDetected) send(); }, 500);
   window.addEventListener("beforeunload", () => { save(); });
+  setInterval(refreshDisplayOpenState, 1000);      // flip the "display open?" UI if the display closes elsewhere
 }
