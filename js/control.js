@@ -416,7 +416,8 @@ function stopTimerAudio() {
 /* Marry the music to the timer. Called at the end of every control render, so
    any state change that starts or stops the timer plays or fades the music. */
 function syncTimerAudio() {
-  const running = S.timer && S.view !== "winner" && S.view !== "bigscores";
+  // S.timer.silent (the "no sound" timer button) runs the same countdown but plays no music.
+  const running = S.timer && !S.timer.silent && S.view !== "winner" && S.view !== "bigscores";
   const elapsed = running ? (Date.now() - S.timer.startedAt) / 1000 : 0;
   if (running && elapsed < S.timer.seconds) startTimerAudio(S.timer.startedAt, elapsed, S.timer.seconds);
   else stopTimerAudio();
@@ -780,7 +781,11 @@ function renderPlay() {
     if (finalLiveInp) finalLiveInp.oninput = (e) => { liveAnswerDraft = e.target.value; };
     const bTimer = document.getElementById("btnTimer");
     if (bTimer) bTimer.onclick = () => update(() => {
-      S.timer = S.timer ? null : { startedAt: Date.now(), seconds: 30 };
+      S.timer = S.timer ? null : { startedAt: Date.now(), seconds: 30 };   // with music (or cancel)
+    });
+    const bTimerSilent = document.getElementById("btnTimerSilent");
+    if (bTimerSilent) bTimerSilent.onclick = () => update(() => {
+      S.timer = { startedAt: Date.now(), seconds: 30, silent: true };       // same countdown, no music
     });
     app.querySelectorAll("[data-award]").forEach(b => b.onclick = () => {
       const [i, sign] = b.dataset.award.split(":");
@@ -969,7 +974,10 @@ function clueControlHtml(cl, isDD) {
     ${answerHtml}
     <div class="field-row">
       ${S.revealed ? "" : `${cl.unknown ? "" : `<button class="btn gold" id="btnReveal">Reveal answer on TV</button>`}
-      <button class="btn" id="btnTimer">${S.timer ? "✖ Cancel timer" : "⏱ 30-second timer"}</button>`}
+      ${S.timer
+        ? `<button class="btn" id="btnTimer">✖ Cancel timer</button>`
+        : `<button class="btn" id="btnTimer">🔊 30-second timer</button>
+           <button class="btn" id="btnTimerSilent">🔇 Timer — no sound</button>`}`}
       <button class="btn primary" id="btnBack">Done — back to board</button>
     </div>
     ${S.revealed ? `
