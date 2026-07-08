@@ -137,7 +137,7 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 /* clue */
 .clue-full { background: var(--board-blue); position: fixed; inset: 0; display: flex;
   flex-direction: column; align-items: center; justify-content: center; justify-content: safe center;
-  padding: 2.5vh 4vw; text-align: center; overflow-y: auto; }
+  padding: 2.5vh 4vw; text-align: center; overflow: hidden; }
 /* "safe center" centers when it fits but falls back to top-align when content
    overflows, so a very long clue never clips the category/first lines */
 .clue-inner { display: flex; flex-direction: column; align-items: center;

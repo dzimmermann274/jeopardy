@@ -116,6 +116,40 @@ function renderDisplay() {
 
   document.getElementById("btnFS").onclick = goFullscreen;
   runTimerBar();
+  fitClue();                          // immediate best-effort
+  requestAnimationFrame(fitClue);     // correct once layout/fonts have settled
+  setTimeout(fitClue, 250);           // backup in case fonts/layout settle later
+}
+
+/* Safety net so long text is never cut off: after layout, if the clue/answer
+   overflow the screen, shrink their font until everything fits. Short clues
+   never overflow, so they're left exactly as-is. Re-runs on image load.
+   No-image clues grow to content height, so we test against the viewport;
+   image clues fill the height, so we test their internal content overflow. */
+function fitClue() {
+  const inner = document.querySelector(".clue-full .clue-inner");
+  if (!inner) return;
+  const els = [inner.querySelector(".clue-text"), inner.querySelector(".clue-answer")].filter(Boolean);
+  if (!els.length) return;
+  // Measure the real content extent (first child's top to last child's bottom),
+  // which includes any overflow past the capped inner box, and shrink the
+  // clue/answer font until it fits fully within the viewport.
+  const bounds = () => {
+    let top = Infinity, bot = 0;
+    for (const k of inner.children) { const r = k.getBoundingClientRect(); top = Math.min(top, r.top); bot = Math.max(bot, r.bottom); }
+    return { top, bot };
+  };
+  let guard = 0;
+  while (guard++ < 100) {
+    const b = bounds();
+    if (b.top >= 2 && b.bot <= window.innerHeight - 2) break;   // fully on screen
+    let shrunk = false;
+    for (const el of els) {
+      const m = (el.style.fontSize || "").match(/([\d.]+)vw/);
+      if (m && parseFloat(m[1]) > 1.2) { el.style.fontSize = (parseFloat(m[1]) * 0.95).toFixed(3) + "vw"; shrunk = true; }
+    }
+    if (!shrunk) break;   // hit the minimum font — accept it
+  }
 }
 
 /* A picture that fails to load must not vanish silently: show a visible
@@ -137,7 +171,7 @@ function clueScreenHtml(catLabel, clue, answer, revealed, image, animate) {
   return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""} ${image ? "has-image" : ""}">
     <div class="clue-cat">${esc(catLabel)}</div>
     <div class="clue-text" style="font-size:${size}">${fmtText(clue)}</div>
-    ${image ? `<img class="clue-img" src="${esc(image)}" alt="" onerror="imgFail(this)">` : ""}
+    ${image ? `<img class="clue-img" src="${esc(image)}" alt="" onload="fitClue()" onerror="imgFail(this)">` : ""}
     ${revealed ? `<div class="clue-answer ${animate ? "pop" : ""}" style="font-size:${ansSize}">${fmtText(answer)}</div>` : ""}
   </div></div>`;
 }
