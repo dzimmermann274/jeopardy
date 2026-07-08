@@ -141,8 +141,9 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 .clue-text { font-family: Georgia, "Times New Roman", serif; font-weight: 700; text-transform: uppercase;
   color: #fff; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw; }
 .clue-answer { margin-top: 6vh; color: var(--value-gold); font-family: Georgia, serif; font-weight: 700;
-  text-transform: uppercase; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw;
-  animation: pop .4s ease; }
+  text-transform: uppercase; text-shadow: .05em .05em 0 #000; line-height: 1.3; max-width: 88vw; }
+/* animate only on first reveal (.pop); re-renders (e.g. score edits) hold static */
+.clue-answer.pop { animation: pop .4s ease; }
 .clue-img { max-width: 72vw; max-height: 40vh; margin-top: 4vh; border: .4vmin solid #000;
   border-radius: 1vmin; background: #fff; object-fit: contain; }
 /* once the answer is revealed, give it room: the picture shrinks */
@@ -187,3 +188,24 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
   opacity: 0; transition: opacity .3s; }
 body.display:hover .fs-btn { opacity: 1; }
 body.display.is-fullscreen .fs-btn { display: none; }
+
+/* winner screen (display/TV) — same look as the score screen, with a champion banner */
+.winner-banner { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
+  font-size: 7vw; text-shadow: .06em .06em 0 #000; letter-spacing: .04em; }
+.winner-banner.pop { animation: pop .5s ease; }   /* animate on first entry only */
+.winner-name { font-family: Impact, "Arial Black", sans-serif; color: #fff; text-transform: uppercase;
+  font-size: 5vw; text-shadow: .06em .06em 0 #000, 0 0 40px rgba(6,12,233,.9); margin-top: 1vh; text-align: center; }
+.winner-score { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
+  font-size: 4vw; text-shadow: .06em .06em 0 #000; margin-top: .5vh; }
+.bigscore-pod.is-winner { border-color: var(--value-gold); box-shadow: 0 0 3vmin rgba(245,197,24,.6); }
+
+/* custom in-page dialogs (control panel) — replace native alert/confirm/prompt
+   so the fullscreen TV window is never forced out of fullscreen */
+.modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-box { background: var(--panel-card); border: 1px solid #3a3f58; border-radius: 12px;
+  padding: 22px; max-width: 460px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.modal-msg { color: var(--panel-text); font-size: 16px; line-height: 1.5; margin-bottom: 16px; }
+.modal-input { width: 100%; background: #191c2b; color: var(--panel-text); border: 1px solid #3a3f58;
+  border-radius: 8px; padding: 10px 12px; font-size: 15px; margin-bottom: 16px; }
+.modal-btns { display: flex; gap: 10px; justify-content: flex-end; }

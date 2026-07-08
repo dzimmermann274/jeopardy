@@ -28,6 +28,79 @@ function openDisplay() {
 
 function displayLooksOpen() { return displayWin && !displayWin.closed; }
 
+/* ---------------- custom dialogs ----------------
+   Chrome exits fullscreen whenever a native alert/confirm/prompt is shown
+   (policy since Chrome 61). The TV window is fullscreen, so we must never
+   trigger a native dialog. These in-page modals replace them. Each appends
+   an overlay to <body> (outside #app), so a control re-render never disturbs
+   an open dialog. */
+function closeModal(ov, resolve, val) {
+  document.removeEventListener("keydown", ov.__keyHandler);
+  ov.remove();
+  resolve(val);
+}
+function customConfirm(message, { okText = "Yes", cancelText = "Cancel", danger = false } = {}) {
+  return new Promise(resolve => {
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay";
+    ov.innerHTML = `<div class="modal-box">
+      <div class="modal-msg">${esc(message)}</div>
+      <div class="modal-btns">
+        <button class="btn" data-no>${esc(cancelText)}</button>
+        <button class="btn ${danger ? "bad" : "primary"}" data-yes>${esc(okText)}</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("[data-yes]").onclick = () => closeModal(ov, resolve, true);
+    ov.querySelector("[data-no]").onclick = () => closeModal(ov, resolve, false);
+    ov.onclick = (e) => { if (e.target === ov) closeModal(ov, resolve, false); };
+    ov.__keyHandler = (e) => {
+      if (e.key === "Escape") closeModal(ov, resolve, false);
+      else if (e.key === "Enter") closeModal(ov, resolve, true);
+    };
+    document.addEventListener("keydown", ov.__keyHandler);
+    ov.querySelector("[data-yes]").focus();
+  });
+}
+function customPrompt(message, defaultValue = "") {
+  return new Promise(resolve => {
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay";
+    ov.innerHTML = `<div class="modal-box">
+      <div class="modal-msg">${esc(message)}</div>
+      <input type="text" class="modal-input" value="${esc(defaultValue)}">
+      <div class="modal-btns">
+        <button class="btn" data-no>Cancel</button>
+        <button class="btn primary" data-yes>OK</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    const input = ov.querySelector(".modal-input");
+    ov.querySelector("[data-yes]").onclick = () => closeModal(ov, resolve, input.value);
+    ov.querySelector("[data-no]").onclick = () => closeModal(ov, resolve, null);
+    ov.onclick = (e) => { if (e.target === ov) closeModal(ov, resolve, null); };
+    ov.__keyHandler = (e) => {
+      if (e.key === "Escape") closeModal(ov, resolve, null);
+      else if (e.key === "Enter") closeModal(ov, resolve, input.value);
+    };
+    document.addEventListener("keydown", ov.__keyHandler);
+    input.focus(); input.select();
+  });
+}
+function customAlert(message) {
+  return new Promise(resolve => {
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay";
+    ov.innerHTML = `<div class="modal-box">
+      <div class="modal-msg">${esc(message)}</div>
+      <div class="modal-btns"><button class="btn primary" data-ok>OK</button></div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("[data-ok]").onclick = () => closeModal(ov, resolve, undefined);
+    ov.onclick = (e) => { if (e.target === ov) closeModal(ov, resolve, undefined); };
+    ov.__keyHandler = (e) => { if (e.key === "Escape" || e.key === "Enter") closeModal(ov, resolve, undefined); };
+    document.addEventListener("keydown", ov.__keyHandler);
+    ov.querySelector("[data-ok]").focus();
+  });
+}
+
 function otherControlBannerHtml() {
   if (!otherControlDetected) return "";
   return `<div class="setup-err" style="margin-bottom:16px">⚠️ <b>Another control-panel tab is already open.</b>
@@ -201,9 +274,17 @@ function renderPlay() {
   const inClue = S.view === "clue" || S.view === "dd";
   const isDD = cl && cl.dd && S.dd;
   const isFinal = S.view === "final-category" || S.view === "final-clue";
+  const isWinner = S.view === "winner";
 
   let mainHtml = "";
-  if (isFinal) mainHtml = finalControlHtml();
+  if (isWinner) {
+    const champs = winnersOf(S.teams);
+    const tie = champs.length > 1;
+    mainHtml = `<div class="card"><h2>🏆 ${tie ? "It's a tie — on the TV now" : "Winner — on the TV now"}</h2>
+      <p class="hint">${tie ? "Tied at the top: " : "Champion: "}<b>${champs.map(t => esc(t.name)).join(", ")}</b> with ${money(champs.length ? champs[0].score : 0)}.
+      Click "◀ Back to game" above to keep playing, or "⟲ New game" to start over.</p></div>`;
+  }
+  else if (isFinal) mainHtml = finalControlHtml();
   else if (inClue && cl) mainHtml = clueControlHtml(cl, isDD);
   else if (S.view === "bigscores") mainHtml = `<div class="card"><h2>Scores are on the TV</h2>
     <p class="hint">Click "Back to game" above to return to where you were.</p></div>`;
@@ -216,9 +297,12 @@ function renderPlay() {
       <div class="ctl-toolbar">
         <span class="status-pill"><span class="dot ${displayLooksOpen() ? "on" : ""}"></span>Display</span>
         <button class="btn small" id="btnReopenDisplay">Open display</button>
-        <button class="btn small" id="btnShowScores">${S.view === "bigscores" ? "◀ Back to game" : "Show scores on TV"}</button>
+        ${isWinner
+          ? `<button class="btn small" id="btnWinnerBack">◀ Back to game</button>`
+          : `<button class="btn small" id="btnShowScores">${S.view === "bigscores" ? "◀ Back to game" : "Show scores on TV"}</button>
         ${S.game.rounds.length > S.roundIdx + 1 && !isFinal ? `<button class="btn small" id="btnNextRound">Next round →</button>` : ""}
         ${S.game.final && !isFinal && S.view !== "bigscores" ? `<button class="btn small gold" id="btnFinal">Final Jeopardy</button>` : ""}
+        <button class="btn small gold" id="btnAnnounceWinner">🏆 Announce winner</button>`}
         <button class="btn small" id="btnReset">⟲ New game</button>
       </div>
     </div>
@@ -242,23 +326,37 @@ function renderPlay() {
   </div>`;
 
   document.getElementById("btnReopenDisplay").onclick = () => { openDisplay(); renderControl(); };
-  document.getElementById("btnShowScores").onclick = () =>
+  const bScores = document.getElementById("btnShowScores");
+  if (bScores) bScores.onclick = () =>
     update(() => {
       if (S.view === "bigscores") { S.view = S.prevView || "board"; S.prevView = null; }
       else { S.prevView = S.view; S.view = "bigscores"; }
     });
+  const bWinnerBack = document.getElementById("btnWinnerBack");
+  if (bWinnerBack) bWinnerBack.onclick = () =>
+    update(() => { S.view = S.winnerPrev || "board"; S.winnerPrev = null; });
+  const bAnnounce = document.getElementById("btnAnnounceWinner");
+  if (bAnnounce) bAnnounce.onclick = () => {
+    customConfirm("Announce the winner? The final results will appear on the TV.", { okText: "Announce 🏆" })
+      .then(ok => { if (ok) update(() => {
+        // remember where we were (its own slot, so it never clobbers bigscores' return view)
+        S.winnerPrev = S.view === "winner" ? "board" : S.view;
+        S.view = "winner"; S.timer = null;
+      }); });
+  };
   const nx = document.getElementById("btnNextRound");
   if (nx) nx.onclick = () => {
     const cur = currentRound();
     const msg = roundDone(cur) ? "Move on to the next round?" : "Some clues haven't been played yet. Move on to the next round anyway?";
-    if (confirm(msg)) update(() => {
+    customConfirm(msg).then(ok => { if (ok) update(() => {
       S.roundIdx++; S.view = "board"; S.prevView = null;
       S.active = null; S.revealed = false; S.dd = null; S.awarded = {}; S.timer = null;
-    });
+    }); });
   };
   const fj = document.getElementById("btnFinal");
   if (fj) fj.onclick = () => {
-    if (confirm("Start Final Jeopardy? (The category will appear on the TV.)")) {
+    customConfirm("Start Final Jeopardy? (The category will appear on the TV.)").then(ok => {
+      if (!ok) return;
       liveAnswerDraft = "";
       update(() => {
         S.view = "final-category"; S.prevView = null;
@@ -268,14 +366,15 @@ function renderPlay() {
           S.finalWagers = S.teams.map(() => 0);
         }
       });
-    }
+    });
   };
   document.getElementById("btnReset").onclick = () => {
-    if (confirm("Start over completely? Scores and board progress will be erased.")) {
+    customConfirm("Start over completely? Scores and board progress will be erased.", { okText: "New game", danger: true }).then(ok => {
+      if (!ok) return;
       clearSavedGame();
       finalWagerDrafts = null;
       update(() => { S = freshState(); });
-    }
+    });
   };
   app.querySelectorAll("[data-adj]").forEach(b => b.onclick = () => {
     const [i, d] = b.dataset.adj.split(":").map(Number);
@@ -283,8 +382,9 @@ function renderPlay() {
   });
   app.querySelectorAll("[data-editscore]").forEach(b => b.onclick = () => {
     const i = +b.dataset.editscore;
-    const v = prompt("New score for " + S.teams[i].name + ":", S.teams[i].score);
-    if (v !== null && v.trim() !== "" && !isNaN(+v)) update(() => { S.teams[i].score = Math.round(+v); });
+    customPrompt("New score for " + S.teams[i].name + ":", String(S.teams[i].score)).then(v => {
+      if (v !== null && v.trim() !== "" && !isNaN(+v)) update(() => { S.teams[i].score = Math.round(+v); });
+    });
   });
 
   wireMain();
@@ -323,7 +423,7 @@ function renderPlay() {
     const bLive = document.getElementById("btnLiveReveal");
     if (bLive) bLive.onclick = () => {
       const txt = liveAnswerDraft.trim();
-      if (!txt) { alert("Type the answer first."); return; }
+      if (!txt) { customAlert("Type the answer first."); return; }
       update(() => {
         const c = activeClue(); if (!c) return;
         c.answer = txt; c.unknown = false;
@@ -333,7 +433,7 @@ function renderPlay() {
     const bFinalLive = document.getElementById("btnFinalLiveReveal");
     if (bFinalLive) bFinalLive.onclick = () => {
       const txt = liveAnswerDraft.trim();
-      if (!txt) { alert("Type the answer first."); return; }
+      if (!txt) { customAlert("Type the answer first."); return; }
       update(() => {
         S.game.final.answer = txt; S.game.final.unknown = false;
         S.finalRevealed = true;
@@ -372,7 +472,7 @@ function renderPlay() {
     const ddGo = document.getElementById("btnDDGo");
     if (ddGo) ddGo.onclick = () => {
       const w = Math.round(+ddDraft.wager);
-      if (String(ddDraft.wager).trim() === "" || isNaN(w) || w < 0) { alert("Enter a wager amount."); return; }
+      if (String(ddDraft.wager).trim() === "" || isNaN(w) || w < 0) { customAlert("Enter a wager amount."); return; }
       update(() => { S.dd = { teamIdx: ddDraft.team, wager: w }; S.view = "clue"; });
     };
     /* final jeopardy controls */
@@ -495,7 +595,7 @@ function clueControlHtml(cl, isDD) {
   const ddTeam = S.dd && S.dd.teamIdx != null ? S.teams[S.dd.teamIdx] : null;
   let answerHtml;
   if (S.revealed) {
-    answerHtml = `<div class="answer-shown">✅ Answer (now on the TV): &nbsp;${esc(cl.answer)}</div>`;
+    answerHtml = `<div class="answer-shown">✅ Answer (now on the TV): &nbsp;${fmtText(cl.answer)}</div>`;
   } else if (cl.unknown) {
     answerHtml = `
     <div class="live-answer">
@@ -564,7 +664,7 @@ function finalControlHtml() {
   }
   let fAnswerHtml;
   if (S.finalRevealed) {
-    fAnswerHtml = `<div class="answer-shown">✅ Answer (now on the TV): &nbsp;${esc(f.answer)}</div>`;
+    fAnswerHtml = `<div class="answer-shown">✅ Answer (now on the TV): &nbsp;${fmtText(f.answer)}</div>`;
   } else if (f.unknown) {
     fAnswerHtml = `
     <div class="live-answer">

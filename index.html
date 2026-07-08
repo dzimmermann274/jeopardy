@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jeopardy!</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 <div id="app"></div>
@@ -17,12 +17,13 @@
      loading; core defines shared state/sync; control & display
      define the two UIs; main boots whichever mode this window is.
      ========================================================== -->
+<!-- bump ?v= on every deploy so browsers never run stale cached JS/CSS -->
 <script src="js/vendor/xlsx.full.min.js"></script>
-<script src="js/sample-game.js"></script>
-<script src="js/data.js"></script>
-<script src="js/core.js"></script>
-<script src="js/control.js"></script>
-<script src="js/display.js"></script>
-<script src="js/main.js"></script>
+<script src="js/sample-game.js?v=4"></script>
+<script src="js/data.js?v=4"></script>
+<script src="js/core.js?v=4"></script>
+<script src="js/control.js?v=4"></script>
+<script src="js/display.js?v=4"></script>
+<script src="js/main.js?v=4"></script>
 </body>
 </html>

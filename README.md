@@ -33,6 +33,11 @@ category**; 4 filled tabs ⇒ a 4-category board; 6 ⇒ 6. The board's dollar ro
 whatever values actually exist in the sheet (duplicate values get their own rows).
 Unresolvable Question IDs are skipped with a warning shown on the setup screen.
 
+Multi-line clues/answers: since a Google Sheets cell can't hold a real newline, type
+**`##`** anywhere in a clue or answer and the game turns it into a line break on the TV
+(e.g. `Abraham Lincoln##(1809–1865)`). Two hashes, chosen so ordinary answers like `C#`
+or `#1` aren't affected.
+
 The writer finishes with **Share → Anyone with the link → Viewer** and sends the link to
 the host, who pastes it into the game without ever opening the sheet.
 
@@ -49,8 +54,16 @@ Double`) is still auto-detected and supported.
 4. Click **Start the game ▶** and run everything from the laptop. Answers appear on the TV
    for everyone — including you — at the same moment.
 
+Use **🏆 Announce winner** (top of the control panel) at any point to show a final
+results screen on the TV with the champion highlighted (ties handled); it asks "are you
+sure" first. **◀ Back to game** returns to play.
+
 If the browser reloads mid-game, reopen the link: the setup screen offers **Resume that
 game** with scores and board progress intact.
+
+Note: the control panel uses in-page dialogs (not the browser's popup boxes) so the TV
+never gets kicked out of fullscreen. Bump the `?v=` number on the script tags in
+`index.html` on each deploy so browsers pick up new code immediately.
 
 ## How it works (for future changes)
 

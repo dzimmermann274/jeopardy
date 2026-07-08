@@ -8,10 +8,25 @@ function fsElement() {
   return document.fullscreenElement || document.webkitFullscreenElement || null;
 }
 
+/* Remembers which revealed answer is currently on screen, so the "pop"
+   animation plays once on reveal and then holds static across re-renders
+   (e.g. when the host edits a score while the answer is up). */
+let lastAnswerKey = null;
+let winnerShown = false;   // same idea for the winner banner's pop
+
 function renderDisplay() {
   document.body.className = "display" + (fsElement() ? " is-fullscreen" : "");
   const r = currentRound();
   let view = "";
+
+  // Animate the answer only when it FIRST appears for this clue.
+  const answerKey = (S.view === "clue" && S.active && S.revealed) ? ("c" + S.active.cat + "," + S.active.row)
+                  : (S.view === "final-clue" && S.finalRevealed) ? "final" : null;
+  const animateAnswer = answerKey != null && answerKey !== lastAnswerKey;
+  lastAnswerKey = answerKey;
+  // Same first-appearance gating for the winner banner's pop.
+  const animateWin = S.view === "winner" && !winnerShown;
+  winnerShown = S.view === "winner";
 
   if (S.phase === "setup" || !S.game || S.view === "welcome") {
     const title = (S.game && S.game.title) || "Jeopardy!";
@@ -29,6 +44,23 @@ function renderDisplay() {
             ${t.players && t.players.length ? `<div class="sp-players">${esc(t.players.join(" · "))}</div>` : ""}
           </div>`).join("")}
       </div></div>`;
+  } else if (S.view === "winner") {
+    const sorted = [...S.teams].sort((a, b) => b.score - a.score);
+    const champs = winnersOf(S.teams);
+    const tie = champs.length > 1;
+    const topScore = champs.length ? champs[0].score : 0;
+    view = `<div class="disp-view">
+      <div class="winner-banner ${animateWin ? "pop" : ""}">${tie ? "IT'S A TIE!" : "🏆 WINNER 🏆"}</div>
+      <div class="winner-name">${champs.map(t => esc(t.name)).join(" &nbsp;&amp;&nbsp; ")}</div>
+      <div class="winner-score">${money(topScore)}</div>
+      <div class="bigscores" style="margin-top:3vh">
+        ${sorted.map(t => `
+          <div class="bigscore-pod score-pod ${t.score === topScore ? "is-winner" : ""}">
+            <div class="sp-name">${t.score === topScore ? "🏆 " : ""}${esc(t.name)}</div>
+            <div class="sp-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</div>
+            ${t.players && t.players.length ? `<div class="sp-players">${esc(t.players.join(" · "))}</div>` : ""}
+          </div>`).join("")}
+      </div></div>`;
   } else if (S.view === "dd") {
     view = `<div class="clue-full"><div class="clue-inner"><div class="dd-splash">DAILY<br>DOUBLE!</div></div></div>`;
   } else if (S.view === "final-category") {
@@ -36,12 +68,12 @@ function renderDisplay() {
       <div class="clue-cat">Final Jeopardy — The category is</div>
       <div class="clue-text" style="font-size:6vw">${esc(S.game.final.category)}</div></div></div>`;
   } else if (S.view === "final-clue") {
-    view = clueScreenHtml(S.game.final.category, S.game.final.clue, S.game.final.answer, S.finalRevealed, S.game.final.image);
+    view = clueScreenHtml(S.game.final.category, S.game.final.clue, S.game.final.answer, S.finalRevealed, S.game.final.image, animateAnswer);
   } else if (S.view === "clue" && S.active) {
     const cl = activeClue();
     if (cl) {
       const amount = S.dd && S.dd.wager != null ? S.dd.wager : cl.value;
-      view = clueScreenHtml(activeCatName() + " — " + money(amount), cl.clue, cl.answer, S.revealed, cl.image);
+      view = clueScreenHtml(activeCatName() + " — " + money(amount), cl.clue, cl.answer, S.revealed, cl.image, animateAnswer);
     }
   }
   if (!view && r) {
@@ -66,7 +98,7 @@ function renderDisplay() {
     </div>`;
   }
 
-  const showStrip = S.phase === "play" && S.view !== "bigscores" && S.teams.length;
+  const showStrip = S.phase === "play" && S.view !== "bigscores" && S.view !== "winner" && S.teams.length;
   app.innerHTML = `
     <div class="disp-stage">
       ${view}
@@ -91,16 +123,16 @@ function imgFail(img) {
   CHANNEL.postMessage({ type: "img-error", src });
 }
 
-function clueScreenHtml(catLabel, clue, answer, revealed, image) {
+function clueScreenHtml(catLabel, clue, answer, revealed, image, animate) {
   // Scale by total visible content so very long clues (and the revealed
   // answer, and a picture) still fit; .clue-full also scrolls as a last resort.
   const len = clue.length + (revealed ? String(answer || "").length : 0) + (image ? 180 : 0);
   const size = len > 600 ? "2vw" : len > 400 ? "2.5vw" : len > 260 ? "3vw" : len > 150 ? "3.8vw" : len > 80 ? "4.6vw" : "5.4vw";
   return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""}">
     <div class="clue-cat">${esc(catLabel)}</div>
-    <div class="clue-text" style="font-size:${size}">${esc(clue)}</div>
+    <div class="clue-text" style="font-size:${size}">${fmtText(clue)}</div>
     ${image ? `<img class="clue-img" src="${esc(image)}" alt="" onerror="imgFail(this)">` : ""}
-    ${revealed ? `<div class="clue-answer" style="font-size:${len > 150 ? "3vw" : "3.8vw"}">${esc(answer)}</div>` : ""}
+    ${revealed ? `<div class="clue-answer ${animate ? "pop" : ""}" style="font-size:${len > 150 ? "3vw" : "3.8vw"}">${fmtText(answer)}</div>` : ""}
   </div></div>`;
 }
 
@@ -109,7 +141,9 @@ function runTimerBar() {
   const wrap = document.getElementById("timerWrap");
   const bar = document.getElementById("timerBar");
   if (timerRAF) { cancelAnimationFrame(timerRAF); timerRAF = null; }
-  if (!S.timer || !wrap) { if (wrap) wrap.style.display = "none"; return; }
+  // never show the timer bar over the scores/winner screens
+  const timerHidden = !S.timer || S.view === "winner" || S.view === "bigscores";
+  if (timerHidden || !wrap) { if (wrap) wrap.style.display = "none"; return; }
   wrap.style.display = "block";
   const tick = () => {
     const elapsed = (Date.now() - S.timer.startedAt) / 1000;

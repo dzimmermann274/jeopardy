@@ -18,8 +18,9 @@ function freshState() {
     game: null,              // see js/data.js for the game object shape
     roundIdx: 0,
     teams: [],               // [{name, score}]
-    view: "welcome",         // welcome | board | clue | dd | final-category | final-clue | bigscores
+    view: "welcome",         // welcome | board | clue | dd | final-category | final-clue | bigscores | winner
     prevView: null,          // view to return to when leaving bigscores
+    winnerPrev: null,        // view to return to when leaving the winner screen (separate from bigscores)
     active: null,            // {cat, row}
     revealed: false,
     dd: null,                // {teamIdx, wager} while a daily double is being played
@@ -90,6 +91,15 @@ CHANNEL.onmessage = (ev) => {
 /* ---------------- helpers ---------------- */
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+/* Google Sheets can't hold a real newline inside a cell, so a writer marks a
+   line break with "##". Escape first (safe), then turn ## into <br>. */
+function fmtText(s) { return esc(s).split("##").join("<br>"); }
+/* The team(s) with the top score — used by the winner screen (handles ties). */
+function winnersOf(teams) {
+  if (!teams || !teams.length) return [];
+  const max = Math.max(...teams.map(t => t.score));
+  return teams.filter(t => t.score === max);
 }
 function money(n) { return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(); }
 function currentRound() { return S.game ? S.game.rounds[S.roundIdx] : null; }
