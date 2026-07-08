@@ -193,9 +193,12 @@ function fitClue() {
     return { top, bot };
   };
   let guard = 0;
+  // Keep a little breathing room at the bottom so text never hugs the edge
+  // (the top already has room). Text lifts up into that space as it shrinks.
+  const bottomGap = Math.max(2, window.innerHeight * 0.035);
   while (guard++ < 100) {
     const b = bounds();
-    if (b.top >= 2 && b.bot <= window.innerHeight - 2) break;   // fully on screen
+    if (b.top >= 2 && b.bot <= window.innerHeight - bottomGap) break;   // on screen, off the bottom edge
     let shrunk = false;
     for (const el of els) {
       const m = (el.style.fontSize || "").match(/([\d.]+)vw/);
