@@ -174,6 +174,50 @@ function setCurtainLayer(elem, target, instant) {
   }
 }
 
+/* ---------------- category intro (the "here are today's categories" reveal) ----
+   Full-screen overlay, triggered by the control panel's Show Categories button.
+   Holds a CATEGORIES title card for 3s, then shuffles each category (in board
+   order) for ~1.75s apiece with a slide/scale/blur reveal, then fades to the
+   board. Self-contained on the display; nothing further is broadcast. */
+let introTimer = null;
+function playCategoryIntro() {
+  const r = currentRound();
+  if (!r || !r.categories || !r.categories.length) return;
+  if (introTimer) { clearTimeout(introTimer); introTimer = null; }
+  const old = document.getElementById("catIntro"); if (old) old.remove();
+
+  const cats = r.categories.map(c => c.name);
+  const ov = document.createElement("div");
+  ov.id = "catIntro"; ov.className = "cat-intro";
+  document.body.appendChild(ov);
+
+  const TITLE_MS = 3000, CAT_MS = 1750, OUT_MS = 700;
+  const steps = [{ kind: "title" }].concat(cats.map((name, i) => ({ kind: "cat", name, idx: i + 1, total: cats.length })));
+  let i = 0;
+  const step = () => {
+    if (i >= steps.length) {                         // done — fade the overlay off, revealing the board
+      ov.classList.add("cat-intro-out");
+      introTimer = setTimeout(() => { ov.remove(); introTimer = null; }, OUT_MS);
+      return;
+    }
+    const s = steps[i]; i++;
+    const dwell = s.kind === "title" ? TITLE_MS : CAT_MS;
+    if (s.kind === "title") {
+      ov.innerHTML = `<div class="cat-intro-card title" style="--dwell:${dwell}ms">
+        <div class="cat-intro-count">Here are today's</div>
+        <div class="cat-intro-name" style="font-size:12vw">CATEGORIES</div></div>`;
+    } else {
+      const n = String(s.name || "").length;
+      const size = n > 30 ? "4.4vw" : n > 22 ? "5.4vw" : n > 14 ? "7vw" : "8.6vw";
+      ov.innerHTML = `<div class="cat-intro-card" style="--dwell:${dwell}ms">
+        <div class="cat-intro-count">${s.idx} of ${s.total}</div>
+        <div class="cat-intro-name" style="font-size:${size}">${fmtText(String(s.name || "").toUpperCase())}</div></div>`;
+    }
+    introTimer = setTimeout(step, dwell);
+  };
+  step();
+}
+
 /* Safety net so long text is never cut off: after layout, if the clue/answer
    overflow the screen, shrink their font until everything fits. Short clues
    never overflow, so they're left exactly as-is. Re-runs on image load.
@@ -221,21 +265,26 @@ function clueScreenHtml(catLabel, clue, answer, revealed, image, animate, replac
   // text once the answer is revealed so the answer fills the screen — but a
   // photo, if any, always stays.
   const hideQ = !!(replace && revealed);
+  const imgs = imageList(image);          // one or two pictures
+  const hasImg = imgs.length > 0;
   // Scale by total visible content so very long clues (and the revealed
   // answer, and a picture) still fit; .clue-full also scrolls as a last resort.
-  const len = (hideQ ? 0 : clue.length) + (revealed ? String(answer || "").length : 0) + (image ? 180 : 0);
+  const len = (hideQ ? 0 : clue.length) + (revealed ? String(answer || "").length : 0) + (hasImg ? 180 : 0);
   // Bigger overall for accessibility; steps still shrink so long clues (and
   // image clues, which add ~180 to len) keep fitting the screen.
   const size = len > 600 ? "2.4vw" : len > 400 ? "3vw" : len > 260 ? "3.6vw" : len > 150 ? "4.4vw" : len > 80 ? "5.2vw" : "6.2vw";
   // When the answer has the screen to itself, let it be larger.
-  const ansLen = String(answer || "").length + (image ? 120 : 0);
+  const ansLen = String(answer || "").length + (hasImg ? 120 : 0);
   const ansSize = hideQ
     ? (ansLen > 320 ? "3.6vw" : ansLen > 180 ? "4.6vw" : ansLen > 90 ? "5.8vw" : "7vw")
     : (len > 150 ? "3.6vw" : "4.6vw");
-  return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""} ${image ? "has-image" : ""}">
+  const imgHtml = hasImg
+    ? `<div class="clue-imgs${imgs.length > 1 ? " multi" : ""}">${imgs.map(u => `<img class="clue-img" src="${esc(u)}" alt="" onload="fitClue()" onerror="imgFail(this)">`).join("")}</div>`
+    : "";
+  return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""} ${hasImg ? "has-image" : ""}">
     <div class="clue-cat">${esc(catLabel)}</div>
     ${hideQ ? "" : `<div class="clue-text" style="font-size:${size}">${fmtText(clue)}</div>`}
-    ${image ? `<img class="clue-img" src="${esc(image)}" alt="" onload="fitClue()" onerror="imgFail(this)">` : ""}
+    ${imgHtml}
     ${revealed ? `<div class="clue-answer ${animate ? "pop" : ""}" style="font-size:${ansSize}">${fmtText(answer)}</div>` : ""}
   </div></div>`;
 }

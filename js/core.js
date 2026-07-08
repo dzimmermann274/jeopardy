@@ -102,6 +102,7 @@ CHANNEL.onmessage = (ev) => {
   if (IS_DISPLAY) {
     if (msg.type === "state") { S = msg.state; renderDisplay(); }
     else if (msg.type === "ping-display") { CHANNEL.postMessage({ type: "display-alive" }); }
+    else if (msg.type === "play-intro") { playCategoryIntro(); }   // full-screen category reveal
   } else {
     if (msg.type === "hello") { CHANNEL.postMessage({ type: "state", state: snapshot() }); noteDisplaySeen(); }
     else if (msg.type === "display-alive") { noteDisplaySeen(); }
@@ -124,6 +125,12 @@ function esc(s) {
 /* Google Sheets can't hold a real newline inside a cell, so a writer marks a
    line break with "##". Escape first (safe), then turn ## into <br>. */
 function fmtText(s) { return esc(s).split("##").join("<br>"); }
+/* A clue's image can be one URL or two (comma-separated in the sheet). Normalize
+   to an array so the display/control handle one or two the same way. */
+function imageList(image) {
+  if (Array.isArray(image)) return image.filter(Boolean);
+  return image ? [image] : [];
+}
 /* The team(s) with the top score — used by the winner screen (handles ties). */
 function winnersOf(teams) {
   if (!teams || !teams.length) return [];

@@ -24,8 +24,9 @@ The game **mirrors a copy of the "Jeopardy Questions" workbook** (template in
   stays); blank = normal (question and answer show together). The game matches this flag to
   each clue by its Question ID, so it needs no change to the category tabs.
 - **🖼 Image Bank** tab — picture links, each with an Image ID. Putting an Image ID next
-  to a question shows the picture on the TV under the clue. Google Drive share links are
-  converted automatically to direct-view URLs.
+  to a question shows the picture on the TV under the clue. **Two Image IDs separated by a
+  comma (e.g. `3, 7`) show two pictures side by side** on the same slide (a pasted URL or a
+  mix works too). Google Drive share links are converted automatically to direct-view URLs.
 - **Six category tabs** — each tab is ONE category; **the tab's name is the category
   title** (writers rename the tab). Writers type just a Question ID next to each dollar
   amount and the question/answer auto-fill via VLOOKUP (typing directly also works), plus
@@ -71,6 +72,11 @@ real fullscreen mode on the **first click or key press** in it (browsers won't l
 force fullscreen with no gesture). With the black-first flow this is invisible — only black shows
 while it happens. To make it fully zero-touch, allow-list the site for automatic fullscreen via the
 Chrome `AutomaticFullscreenAllowedForUrls` policy; the window then goes fullscreen on its own.
+
+Use **Show categories** (top of the control panel) at the start to play a full-screen
+animation that reveals each of the day's categories to the players. After it plays once the
+button greys out but still works (it asks to confirm before replaying); it resets every time
+the control panel is reloaded or a new game starts.
 
 Use **🏆 Announce winner** (top of the control panel) at any point to show a final
 results screen on the TV with the champion highlighted (ties handled); it asks "are you
