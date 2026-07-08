@@ -83,6 +83,36 @@ function parseImageBank(ws) {
   return map;
 }
 
+/* Question IDs arrive as "40", "40.0", or 40 — normalize so a category tab's
+   Question ID matches the bank's ID column. */
+function normId(s) {
+  const t = String(s ?? "").trim();
+  if (!t) return "";
+  const n = parseFloat(t.replace(/,/g, ""));
+  return isNaN(n) ? t.toLowerCase() : String(n);
+}
+function isAffirmative(v) { return /^\s*(y|yes|true|x|1|✓|replace|hide)\b/i.test(String(v ?? "")); }
+
+/* The 🗂 Question Bank's optional "Answer replaces question?" column -> the set
+   of Question IDs whose answer should REPLACE the clue text on the TV when it's
+   revealed (a photo, if any, always stays). Absent column or blank cell = a
+   normal clue (question stays on screen next to the answer). */
+function parseQuestionBankFlags(ws) {
+  const rows = sheetRows(ws);
+  const flags = {};
+  const headerIdx = rows.findIndex(r => r.some(c => /^\s*id\s*$/i.test(c)) && r.some(c => /replace/i.test(c)));
+  if (headerIdx === -1) return flags;                 // no such column -> nobody replaces
+  const header = rows[headerIdx];
+  const idCol = header.findIndex(c => /^\s*id\s*$/i.test(c));
+  const flagCol = header.findIndex(c => /replace/i.test(c));
+  if (idCol === -1 || flagCol === -1) return flags;
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const id = normId(rows[i][idCol]);
+    if (id && isAffirmative(rows[i][flagCol])) flags[id] = true;
+  }
+  return flags;
+}
+
 /* An image cell may hold a bank ID or a pasted URL. */
 function resolveImage(cellValue, imageMap) {
   const v = String(cellValue || "").trim();
@@ -106,7 +136,7 @@ function parseMoney(s) {
 }
 
 /* One category tab -> { name, clues, warnings } or null if it holds no questions. */
-function parseCategoryTab(tabName, ws, imageMap) {
+function parseCategoryTab(tabName, ws, imageMap, bankFlags) {
   const rows = sheetRows(ws);
   // header row = a QUESTION column and an ANSWER column in two DIFFERENT
   // cells. "Question ID" is the reference column, not the question itself,
@@ -121,6 +151,7 @@ function parseCategoryTab(tabName, ws, imageMap) {
   const qCol = header.findIndex(isQuestionHeader);
   const aCol = header.findIndex(c => /answer/i.test(c));
   const imgCol = header.findIndex(c => /image/i.test(c));
+  const qidCol = header.findIndex(c => /question\s*id/i.test(c));   // reference back to the bank
   let vCol = header.findIndex(c => /value/i.test(c));
   if (vCol === -1) vCol = 0;
 
@@ -163,6 +194,8 @@ function parseCategoryTab(tabName, ws, imageMap) {
     if (imgRaw && !image) {
       warnings.push(`${rowLabel}: Image ID "${imgRaw}" isn't in the 🖼 Image Bank — the picture won't show.`);
     }
+    // "Answer replaces question?" is set in the bank and matched here by Question ID.
+    const qid = qidCol !== -1 ? normId(r[qidCol]) : "";
     clues.push({
       value: parseMoney(r[vCol]),
       clue,
@@ -170,6 +203,7 @@ function parseCategoryTab(tabName, ws, imageMap) {
       unknown,
       image,
       dd: false,
+      replace: !!(qid && bankFlags && bankFlags[qid]),
     });
   }
   if (!clues.length) return null;              // empty tab -> no category
@@ -253,9 +287,11 @@ function buildGameFromWorkbook(wb) {
   // Banks + Game Setup first: categories need the image map to resolve Image
   // IDs, and the Game Setup tab supplies the category display names (E4..J4).
   let imageMap = {};
+  let bankFlags = {};
   let setup = null;
   for (const name of wb.SheetNames) {
     if (isImageBankTabName(name)) imageMap = parseImageBank(wb.Sheets[name]);
+    else if (isQuestionBankTabName(name)) bankFlags = parseQuestionBankFlags(wb.Sheets[name]);
     else if (isSetupTabName(name) && !setup) setup = parseSetupTab(wb.Sheets[name]);
   }
   const categoryNames = (setup && setup.categoryNames) || [];
@@ -265,7 +301,7 @@ function buildGameFromWorkbook(wb) {
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name];
     if (isMetaTabName(name) || isQuestionBankTabName(name) || isImageBankTabName(name) || isSetupTabName(name)) continue;
-    const cat = parseCategoryTab(name, ws, imageMap);
+    const cat = parseCategoryTab(name, ws, imageMap, bankFlags);
     if (cat) {
       // Game Setup's E4..J4 names (left to right on the board) override the tab
       // name; an empty cell leaves the tab name in place.
