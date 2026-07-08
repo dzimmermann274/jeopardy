@@ -26,9 +26,35 @@ function welcomeHtml() {
 let lastAnswerKey = null;
 let winnerShown = false;   // same idea for the winner banner's pop
 
-let wantFs = false;   // opened for a fullscreen deploy but not yet in fullscreen
+let wantFs = false;         // opened for a fullscreen deploy but not yet in fullscreen
+let lastRenderedView = null; // the S.view we last rendered (to detect board -> clue)
+let flying = false;          // a "tile flies to full screen" animation is in progress
 
 function renderDisplay() {
+  // Clear any leftover fly background from a previous flight before we rebuild.
+  const staleBg = document.getElementById("flyBoardBg");
+  if (staleBg) staleBg.remove();
+
+  // "Fly the tile to full screen": when a clue is picked from the board, capture
+  // the tile's on-screen rect NOW (the board is still in the DOM) and keep the
+  // board behind the incoming clue so it can grow out of the tile like real
+  // Jeopardy. Only board -> clue/dd; anything else renders instantly as before.
+  let flyFrom = null, flyBoardBg = null;
+  if (lastRenderedView === "board" && (S.view === "clue" || S.view === "dd") && S.active) {
+    const tile = document.querySelector(`.b-tile[data-cat="${S.active.cat}"][data-row="${S.active.row}"]`);
+    const boardView = document.querySelector(".disp-stage > .disp-view");
+    if (tile && boardView) {
+      const r0 = tile.getBoundingClientRect();
+      if (r0.width > 0 && r0.height > 0) {
+        flyFrom = { left: r0.left, top: r0.top, width: r0.width, height: r0.height };
+        flyBoardBg = document.createElement("div");
+        flyBoardBg.id = "flyBoardBg";
+        flyBoardBg.appendChild(boardView);      // move the live board out so the #app rebuild can't destroy it
+        document.body.appendChild(flyBoardBg);
+      }
+    }
+  }
+
   document.body.className = "display" + (fsElement() ? " is-fullscreen" : "") + (wantFs && !fsElement() ? " want-fs" : "");
   const r = currentRound();
   let view = "";
@@ -105,7 +131,7 @@ function renderDisplay() {
         const idx = clueIndexAt(r.categories[c], row.value, row.occ);
         const clue = idx === -1 ? null : r.categories[c].clues[idx];
         cells += clue
-          ? `<div class="b-tile ${clue.used ? "used" : ""}">$${clue.value}</div>`
+          ? `<div class="b-tile ${clue.used ? "used" : ""}" data-cat="${c}" data-row="${idx}">$${clue.value}</div>`
           : `<div class="b-tile used"></div>`;
       }
     }
@@ -133,9 +159,44 @@ function renderDisplay() {
   document.getElementById("btnFS").onclick = goFullscreen;
   runTimerBar();
   renderCurtain();
-  fitClue();                          // immediate best-effort
-  requestAnimationFrame(fitClue);     // correct once layout/fonts have settled
+  lastRenderedView = S.view;
+  fitClue();                          // immediate best-effort (sizes text at full screen)
+  if (flyFrom) startClueFly(flyFrom, flyBoardBg);   // ...then fly the sized clue in from the tile
+  requestAnimationFrame(fitClue);     // correct once layout/fonts have settled (skipped while flying)
   setTimeout(fitClue, 250);           // backup in case fonts/layout settle later
+}
+
+/* Grow the just-rendered clue out of the tile it was picked from (FLIP): start it
+   scaled/translated onto the tile's rect, then transition to full screen. The
+   board stays visible behind it during the flight. Reliable: bails cleanly if
+   anything's missing, and always cleans up (transitionend + a timeout fallback). */
+function startClueFly(fromRect, boardBg) {
+  const cleanupBg = () => { if (boardBg && boardBg.parentNode) boardBg.remove(); };
+  const el = document.querySelector(".clue-full");
+  const to = el && el.getBoundingClientRect();
+  if (!el || !to || !to.width || !to.height || !fromRect.width || !fromRect.height) { cleanupBg(); return; }
+  const sx = fromRect.width / to.width, sy = fromRect.height / to.height;
+  const tx = fromRect.left - to.left, ty = fromRect.top - to.top;
+  flying = true;
+  el.style.transformOrigin = "0 0";
+  el.style.transition = "none";
+  el.style.transform = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
+  el.style.willChange = "transform";
+  void el.offsetWidth;                          // commit the tile-sized starting state
+  el.style.transition = "transform .6s cubic-bezier(.18,.76,.22,1)";
+  el.style.transform = "none";
+  let done = false;
+  const finish = () => {
+    if (done) return; done = true;
+    el.removeEventListener("transitionend", onEnd);
+    cleanupBg();
+    el.style.transition = ""; el.style.transform = ""; el.style.transformOrigin = ""; el.style.willChange = "";
+    flying = false;
+    fitClue();                                  // re-fit now that it's full size
+  };
+  const onEnd = (e) => { if (e.propertyName === "transform") finish(); };
+  el.addEventListener("transitionend", onEnd);
+  setTimeout(finish, 1000);                     // fallback so it can never get stuck
 }
 
 /* The curtain is a persistent overlay (kept OUTSIDE #app, which is rebuilt on
@@ -236,6 +297,7 @@ function playCategoryIntro() {
    No-image clues grow to content height, so we test against the viewport;
    image clues fill the height, so we test their internal content overflow. */
 function fitClue() {
+  if (flying) return;   // the clue is mid-flight (transformed) — measuring it now would be wrong
   const inner = document.querySelector(".clue-full .clue-inner");
   if (!inner) return;
   const els = [inner.querySelector(".clue-text"), inner.querySelector(".clue-answer")].filter(Boolean);
