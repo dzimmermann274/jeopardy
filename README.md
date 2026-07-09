@@ -93,18 +93,20 @@ Final Jeopardy sequence below.
 loaded) asks "are you sure", then runs a host-paced, TV-driven sequence — you push it
 forward one step at a time from the control panel:
 
-1. **Instructions** — a big *FINAL JEOPARDY!* card flies in and off, revealing the rules
-   from the sheet (Game Setup **D18**).
-2. **Category** — a huge *CATEGORY* holds for a beat, then shrinks and rises as the actual
-   category effects in; enter each team's secret wager on the control panel.
+1. **Instructions** — a *FINAL JEOPARDY!* card flies in from a point to full screen, holds,
+   then flies off to reveal the rules from the sheet (Game Setup **D18**).
+2. **Category** — a huge *FINAL JEOPARDY — CATEGORY* holds for ~3s, then shrinks and rises
+   as the actual category effects in; enter each team's secret wager on the control panel.
 3. **Clue** — the question appears and behaves exactly like a normal clue: a **30-second
    timer** (with or without the think music), then **Reveal answer**, then score each
    team's wager Right/Wrong.
 4. **Reveal the winner** — the post-results button. The TV first shows a *Tallying scores…*
    loader; then, one click per place, the standings are unveiled **last place → first**.
-   Each team pops up **large in the center** then drops into its slot, and every card shows
-   a green/red Final-Jeopardy swing (how much that team won or lost). A fanfare plays when
-   the champion lands. **Done — back to the game** returns to the board.
+   Each team pops up **large in the center** and holds a couple of seconds (so everyone can
+   read the numbers) before dropping into its slot. Every card shows two big labelled
+   numbers — the team's **Score** and its green/red **Final Jeopardy result** — and when the
+   last place is revealed the champion grows, the rest recede, and a fanfare plays.
+   **Done — back to the game** returns to the board.
 
 The existing **Announce winner** and **Show scores on TV** buttons are unchanged and stay
 independent of this sequence.
