@@ -695,11 +695,18 @@ function runTimerBar() {
   tick();
 }
 
+/* Whether this display is MEANT to be full screen — set by a fullscreen deploy
+   (armAutoFullscreen) or when the host toggles it on, cleared when the host
+   toggles it off. Drives the auto-recovery in onFullscreenChange below. */
+let fsWanted = false;
+
 /* Toggle — wired to the F key and the ⛶ button. */
 function goFullscreen() {
   if (fsElement()) {
+    fsWanted = false;   // an explicit toggle OUT: the host wants windowed — don't nag to go back
     (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document);
   } else {
+    fsWanted = true;    // toggling IN: keep it full screen (and restore it if it later drops out)
     enterFullscreen();
   }
 }
@@ -712,7 +719,30 @@ function enterFullscreen() {
   try {
     if (el.requestFullscreen) { const p = el.requestFullscreen(); if (p && p.catch) p.catch(() => {}); }
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-  } catch (e) { /* blocked until a gesture — the listeners below handle that */ }
+  } catch (e) { /* blocked until a gesture — the prompt/handlers below handle that */ }
+}
+
+/* The click/key that turns the "click for full screen" prompt into real fullscreen. */
+function fsGo(e) {
+  // ignore lone modifier keys so e.g. tabbing away doesn't count
+  if (e && e.type === "keydown" && ["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) return;
+  if (e) e.stopPropagation();            // don't also fire the ⛶ button / F toggle for this same event
+  enterFullscreen();                     // a real click/key is a valid gesture, so this takes
+}
+/* Show the "click for full screen" prompt and listen for the gesture that fulfils it. */
+function showFsPrompt() {
+  if (wantFs) return;                    // already showing
+  wantFs = true;
+  document.addEventListener("click", fsGo, true);    // capture, so it beats the ⛶ button's own handler
+  document.addEventListener("keydown", fsGo, true);
+  renderDisplay();                       // show the prompt
+}
+function hideFsPrompt() {
+  if (!wantFs) return;
+  wantFs = false;
+  document.removeEventListener("click", fsGo, true);
+  document.removeEventListener("keydown", fsGo, true);
+  renderDisplay();
 }
 
 /* Make a fullscreen deploy actually enter fullscreen MODE (not just fill the
@@ -722,24 +752,18 @@ function enterFullscreen() {
    key anywhere in this window does it (a prompt says so). Broadened from just
    "F" so the host doesn't have to know the shortcut. */
 function armAutoFullscreen() {
-  wantFs = true;
+  fsWanted = true;
   enterFullscreen();                     // zero-gesture best effort (works only if allow-listed)
-  const go = (e) => {
-    // ignore lone modifier keys so e.g. tabbing away doesn't count
-    if (e && e.type === "keydown" && ["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) return;
-    if (e) e.stopPropagation();          // don't also fire the ⛶ button / F toggle for this same event
-    enterFullscreen();                   // a real click/key is a valid gesture, so this takes
-    // finish() runs from fullscreenchange once we're actually in — so if a
-    // request is somehow refused, the prompt stays up and the next click retries.
-  };
-  const finish = () => {
-    document.removeEventListener("click", go, true);
-    document.removeEventListener("keydown", go, true);
-    if (wantFs) { wantFs = false; renderDisplay(); }
-  };
-  document.addEventListener("click", go, true);     // capture, so it beats the ⛶ button's own handler
-  document.addEventListener("keydown", go, true);
-  document.addEventListener("fullscreenchange", () => { if (fsElement()) finish(); });
-  document.addEventListener("webkitfullscreenchange", () => { if (fsElement()) finish(); });
-  renderDisplay();                       // show the prompt
+  showFsPrompt();                        // otherwise a click/key does it
+}
+
+/* Auto-recover full screen. The browser drops HTML full screen whenever the TV
+   window loses focus — most notably when the host clicks "Open host view (new
+   tab)", which pulls the browser's focus to the new tab. It can't be re-entered
+   without a gesture, so if we drop out while we still WANT full screen, re-offer
+   the one-click prompt: a single click (or key) on the TV puts it right back.
+   Entering full screen hides the prompt again. Wired up from main.js. */
+function onFullscreenChange() {
+  if (fsElement()) hideFsPrompt();
+  else if (fsWanted) showFsPrompt();
 }

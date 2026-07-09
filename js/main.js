@@ -29,6 +29,10 @@ if (IS_DISPLAY) {
   document.addEventListener("fullscreenchange", onViewportChange);
   document.addEventListener("webkitfullscreenchange", onViewportChange);
   window.addEventListener("resize", onViewportChange);
+  // Re-offer one-click full screen if the TV drops out of it (e.g. opening the
+  // Host View in another tab steals the browser's focus and exits full screen).
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
   // Opened with "#display&fs=1" (a fullscreen deploy from the control panel):
   // enter true fullscreen automatically — on the first key/click, or with no
   // interaction at all if this site is allow-listed for automatic fullscreen.
