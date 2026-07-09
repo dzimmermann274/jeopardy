@@ -136,6 +136,15 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
   font-size: min(4.2vw, calc(var(--rowvh, 12) * 0.5 * 1vh));
   text-shadow: .06em .06em 0 #000; border: .3vmin solid #000; overflow: hidden; }
 .b-tile.used { color: transparent; text-shadow: none; }
+/* one-time board "populate" reveal (after the category intro on a game's first
+   reveal): tiles start dimmed with their value hidden, then light up + pop their
+   number in a few random groups. Transitions are scoped to .is-revealing so tiles
+   never animate during normal play. */
+.b-val { display: inline-block; }
+.board.is-revealing .b-tile { transition: filter .5s ease; }
+.board.is-revealing .b-tile .b-val { transition: opacity .5s ease, transform .5s cubic-bezier(.18,.8,.25,1.45); }
+.b-tile.tile-pending { filter: brightness(.3); }
+.b-tile.tile-pending .b-val { opacity: 0; transform: scale(.5); }
 
 /* the live board view (grid + scores strip), kept intact behind a clue while it
    "flies" out of its tile to full screen (see startClueFly). z-index:-1 keeps it

@@ -113,7 +113,7 @@ CHANNEL.onmessage = (ev) => {
   if (IS_DISPLAY) {
     if (msg.type === "state") { S = msg.state; renderDisplay(); }
     else if (msg.type === "ping-display") { CHANNEL.postMessage({ type: "display-alive" }); }
-    else if (msg.type === "play-intro") { playCategoryIntro(); }   // full-screen category reveal
+    else if (msg.type === "play-intro") { playCategoryIntro(!!msg.reveal); }   // full-screen category reveal (reveal => also populate the board)
   } else {
     if (msg.type === "hello") { CHANNEL.postMessage({ type: "state", state: snapshot() }); noteDisplaySeen(); }
     // The passive Host View (host.html) requests the current state on open. Reply
@@ -124,6 +124,7 @@ CHANNEL.onmessage = (ev) => {
     // this is the one write it's allowed. The control (which owns S) applies it.
     else if (msg.type === "set-final-wager") { applyFinalWager(msg.teamIdx, msg.wager); }
     else if (msg.type === "display-alive") { noteDisplaySeen(); }
+    else if (msg.type === "board-beep") { playBoardBeep(msg.step, msg.total); }   // arcade blip per board-reveal group (played on the control window)
     else if (msg.type === "control-hello") { CHANNEL.postMessage({ type: "control-active" }); }
     else if (msg.type === "control-active") {
       if (!otherControlDetected) { otherControlDetected = true; renderControl(); }
