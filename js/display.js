@@ -404,29 +404,28 @@ function runBoardReveal() {
   const tiles = board ? [...board.querySelectorAll(".b-tile.tile-pending")] : [];
   if (!tiles.length) { cancelBoardReveal(); return; }
   boardRevealPhase = "running";
-  const GROUPS = Math.min(4, tiles.length);
-  // Randomly assign each tile to a group so the board fills in a scattered,
-  // arcade-like order (not row by row); then make sure no group ends up empty.
+  const GROUPS = Math.min(6, tiles.length);
+  // Randomly assign each tile to a round so the board fills in a scattered,
+  // arcade-like order (not row by row); then make sure no round ends up empty.
   const groups = Array.from({ length: GROUPS }, () => []);
   tiles.forEach(t => groups[Math.floor(Math.random() * GROUPS)].push(t));
   for (let g = 0; g < GROUPS; g++) {
-    while (!groups[g].length) {                       // borrow one from the biggest group
+    while (!groups[g].length) {                       // borrow one from the biggest round
       let big = 0;
       for (let k = 0; k < GROUPS; k++) if (groups[k].length > groups[big].length) big = k;
       groups[g].push(groups[big].pop());
     }
   }
-  const LEAD = 160, GAP = 620, STAGGER = 45;
+  const LEAD = 160, GAP = 500;
   let clock = LEAD;
   groups.forEach((grp, g) => {
     boardRevealTimers.push(setTimeout(() => {
-      CHANNEL.postMessage({ type: "board-beep", step: g, total: GROUPS });   // control panel plays the blip
-      grp.forEach((t, i) => boardRevealTimers.push(
-        setTimeout(() => t.classList.remove("tile-pending"), i * STAGGER)));  // a quick cascade within the group
+      CHANNEL.postMessage({ type: "board-beep", step: g, total: GROUPS });   // control panel blips once per round
+      grp.forEach(t => t.classList.remove("tile-pending"));                  // the whole round cuts in at the same instant
     }, clock));
     clock += GAP;
   });
-  boardRevealTimers.push(setTimeout(cancelBoardReveal, clock + 500));   // settle: back to a plain static board
+  boardRevealTimers.push(setTimeout(cancelBoardReveal, clock + 250));   // settle: back to a plain static board
 }
 
 function playCategoryIntro(withReveal) {

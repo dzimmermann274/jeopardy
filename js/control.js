@@ -575,7 +575,7 @@ function playBoardBeep(step, total) {
   const ctx = fjCtx(); if (!ctx) return;
   try {
     if (ctx.state === "suspended") ctx.resume();
-    const scale = [523.25, 587.33, 659.25, 783.99];      // C5 D5 E5 G5 — ascends group to group
+    const scale = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50];   // C5 D5 E5 G5 A5 C6 — ascends round to round
     const f = scale[Math.min(Math.max(step | 0, 0), scale.length - 1)];
     fjTone(ctx, f, 0, 0.11, 0.11, "square");             // the blip
     fjTone(ctx, f * 2, 0.006, 0.05, 0.04, "square");     // a touch of sparkle on top
