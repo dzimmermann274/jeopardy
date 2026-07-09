@@ -54,24 +54,43 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* ---- top bar (mode tabs) ---- */
+  #host-topbar {
+    position: fixed; top: 0; left: 0; right: 0; height: 50px; z-index: 60;
+    display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 12px;
+    background: rgba(8,14,36,.92); border-bottom: 1px solid var(--panel-border); backdrop-filter: blur(6px);
+  }
+  @media (prefers-color-scheme: light) { #host-topbar { background: rgba(234,238,248,.94); } }
+  .hv-tabs { display: flex; gap: 8px; }
+  .hv-tab {
+    font: inherit; font-size: clamp(13px, 1.6vw, 16px); font-weight: 700;
+    color: var(--muted); background: transparent; border: 1px solid var(--panel-border);
+    border-radius: 999px; padding: 7px 16px; cursor: pointer;
+  }
+  .hv-tab.active { color: var(--answer-ink); background: linear-gradient(180deg, #f7cf5a, var(--gold-deep)); border-color: transparent; }
+
   /* ---- main content region (js writes into #host-content) ---- */
   #host-content {
     position: absolute;
-    inset: 0;
+    inset: 50px 0 0 0;          /* clear the fixed top bar */
     overflow-y: auto;
     display: flex;
-    padding: 92px clamp(18px, 5vw, 64px) 156px;
+    padding: 44px clamp(18px, 5vw, 64px) 156px;
     transition: opacity .3s ease, filter .3s ease;
   }
   /* When the corner timer is up, start the content below it so a long question
-     never runs behind the numerals (the timer sits top-right, up to ~200px tall). */
-  body.timer-on #host-content { padding-top: clamp(150px, 22vh, 212px); }
+     never runs behind the numerals (the timer sits top-right). */
+  body.timer-on #host-content { padding-top: clamp(165px, 20vh, 205px); }
   #host-content > * {           /* margin:auto centers AND allows scroll when tall */
     margin: auto;
     width: 100%;
     max-width: 1120px;
   }
   body.has-large-note #host-content { opacity: .12; filter: blur(1px); }
+
+  /* preview mode: top-aligned, wider column, its own spacing */
+  body.mode-preview #host-content { align-items: flex-start; padding: 22px clamp(14px, 3.5vw, 40px) 130px; }
+  body.mode-preview #host-content > * { margin: 0 auto; max-width: 1320px; }
 
   /* ---- idle screens (setup / title / board) ---- */
   .idle { text-align: center; }
@@ -230,13 +249,14 @@
 
   /* ---- 30-second timer (corner) ---- */
   .host-timer {
-    position: fixed; top: clamp(10px, 2.4vw, 26px); right: clamp(12px, 2.6vw, 30px);
+    position: fixed; top: clamp(56px, 8vh, 66px); right: clamp(12px, 2.6vw, 30px);
     z-index: 40; text-align: center; pointer-events: none;
     background: rgba(8,14,36,.9); border: 1px solid var(--panel-border);
     border-radius: 18px; padding: 8px 20px 10px; backdrop-filter: blur(6px);
   }
+  @media (prefers-color-scheme: light) { .host-timer { background: rgba(234,238,248,.94); } }
   #host-timer-num {
-    font-size: clamp(48px, 11vw, 132px); font-weight: 800; line-height: 1;
+    font-size: clamp(44px, 9vw, 108px); font-weight: 800; line-height: 1;
     font-variant-numeric: tabular-nums; color: var(--gold); text-shadow: 0 3px 0 rgba(0,0,0,.28);
   }
   .host-timer-label { font-size: clamp(11px, 1.3vw, 15px); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
@@ -284,9 +304,67 @@
     0% { transform: translateY(100%); opacity: .2; }
     100% { transform: translateY(0); opacity: 1; }
   }
+
+  /* ---- Final Jeopardy wager entry (live mode) ---- */
+  .fj-live { width: 100%; }
+  .hv-wagers { margin-top: clamp(22px, 4vh, 42px); border-top: 1px solid var(--panel-border); padding-top: 20px; }
+  .hv-wagers-title { font-size: clamp(17px, 2.3vw, 26px); font-weight: 800; color: var(--gold); }
+  .hv-wagers-sub { font-size: clamp(13px, 1.6vw, 17px); color: var(--muted); margin: 4px 0 16px; }
+  .hv-wager-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+  .hv-wager-name { font-size: clamp(17px, 2.2vw, 26px); font-weight: 700; }
+  .hv-wager-score { color: var(--muted); font-weight: 600; font-size: .78em; }
+  .hv-wager-input {
+    font: inherit; font-size: clamp(18px, 2.4vw, 28px); font-weight: 800;
+    width: clamp(120px, 30vw, 220px); text-align: right; padding: 10px 14px;
+    border-radius: 10px; border: 2px solid var(--panel-border);
+    background: var(--panel); color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+  .hv-wager-input:focus { outline: none; border-color: var(--gold); }
+
+  /* ---- question preview mode ---- */
+  .pv { width: 100%; }
+  .pv-scores { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 18px; }
+  .pv-score { display: flex; align-items: baseline; gap: 10px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 7px 14px; }
+  .pvs-name { font-weight: 700; font-size: clamp(14px, 1.8vw, 20px); }
+  .pvs-val { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--gold); font-size: clamp(15px, 1.9vw, 22px); }
+  .pvs-val.neg { color: var(--red); }
+
+  .pv-board { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+  .pv-col { flex: 1 1 0; min-width: 116px; display: flex; flex-direction: column; gap: 6px; }
+  .pv-col-head {
+    font-size: clamp(11px, 1.3vw, 15px); font-weight: 800; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--gold); text-align: center;
+    min-height: 2.8em; display: flex; align-items: center; justify-content: center;
+  }
+  .pv-cell {
+    font: inherit; font-size: clamp(15px, 1.8vw, 21px); font-weight: 800; font-variant-numeric: tabular-nums;
+    color: var(--ink); background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 8px; padding: 12px 6px; cursor: pointer; text-align: center;
+  }
+  .pv-cell.used { opacity: .48; }
+  .pv-cell.sel { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold) inset; color: var(--gold); }
+  .pv-dd { font-size: .68em; color: var(--gold); }
+  .pv-final { margin-top: 8px; width: 100%; letter-spacing: .04em; }
+  .pv-empty { text-align: center; color: var(--muted); font-size: clamp(16px, 2.2vw, 24px); margin-top: 40px; }
+
+  .pv-card { margin-top: 22px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 16px; padding: clamp(16px, 3vw, 34px); }
+  .pv-card-head { font-size: clamp(15px, 2vw, 24px); font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--gold); margin-bottom: 14px; }
+  .pv-q { font-size: clamp(22px, 3.2vw, 44px); font-weight: 700; line-height: 1.3; }
+  .pv-imgs { display: flex; flex-wrap: wrap; gap: 14px; margin: 20px 0 4px; justify-content: center; }
+  .pv-img { max-width: 100%; max-height: 48vh; border-radius: 10px; object-fit: contain; }
+  .pv-a-row { margin-top: 18px; font-size: clamp(20px, 2.8vw, 34px); }
+  .pv-a-label { font-weight: 800; color: var(--muted); margin-right: .35em; }
+  .pv-a-text { font-weight: 800; color: var(--gold); }
+  .pv-a-text.muted { color: var(--muted); font-style: italic; font-weight: 600; }
 </style>
 </head>
 <body>
+  <div id="host-topbar">
+    <div class="hv-tabs">
+      <button class="hv-tab" data-mode="live">Live view</button>
+      <button class="hv-tab" data-mode="preview">Question preview</button>
+    </div>
+  </div>
   <div id="host-timer" class="host-timer" hidden>
     <div id="host-timer-num">30</div>
     <div class="host-timer-label">seconds</div>
@@ -294,6 +372,6 @@
   <div id="host-content"></div>
   <div id="host-note" class="host-note" hidden></div>
   <!-- bump ?v= on every deploy so browsers never run stale cached JS -->
-  <script src="js/host.js?v=37"></script>
+  <script src="js/host.js?v=38"></script>
 </body>
 </html>

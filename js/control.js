@@ -37,6 +37,22 @@ function sendHostNote() {
   update(() => { S.hostNote = { text: hostNoteDraft.trim(), ts: Date.now() }; });
 }
 
+/* Apply a Final Jeopardy wager sent from the Host View (host.html), so wagers can
+   be entered from either screen. S.finalWagers is the single source of truth: set
+   it, keep the control panel's own draft in sync, broadcast — and re-render the
+   control panel UNLESS the operator is mid-typing (so it never yanks their field). */
+function applyFinalWager(teamIdx, wager) {
+  if (S.phase !== "play" || !Array.isArray(S.finalWagers)) return;
+  const i = +teamIdx;
+  if (!(i >= 0 && i < S.teams.length)) return;
+  const w = Math.max(0, Math.round(+wager) || 0);
+  S.finalWagers[i] = w;
+  if (finalWagerDrafts && finalWagerDrafts.length === S.teams.length) finalWagerDrafts[i] = w ? String(w) : "";
+  send();
+  const el = document.activeElement;
+  if (!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) renderControl();
+}
+
 /* Open (or reuse) the single display window. `geom` is an optional
    {left,top,width,height}; without it, a default 1280x720 popup. `wantFs` sets
    the fullscreen-intent flag so the window enters true fullscreen mode.
@@ -938,8 +954,17 @@ function renderPlay() {
     const bBackIntro = document.getElementById("btnFinalBackIntro");
     if (bBackIntro) bBackIntro.onclick = () => update(() => { S.view = "final-intro"; });
 
-    app.querySelectorAll("[data-fwager]").forEach(inp => inp.oninput = (e) => {
-      if (finalWagerDrafts) finalWagerDrafts[+inp.dataset.fwager] = e.target.value;
+    app.querySelectorAll("[data-fwager]").forEach(inp => {
+      inp.oninput = (e) => { if (finalWagerDrafts) finalWagerDrafts[+inp.dataset.fwager] = e.target.value; };
+      // Commit on blur/Enter to S.finalWagers and broadcast, so the Host View sees
+      // it live. No re-render here (that would destroy the button being clicked and
+      // drop focus); the value the operator typed already shows in their field.
+      inp.onchange = (e) => {
+        const i = +inp.dataset.fwager;
+        const w = Math.max(0, Math.round(+e.target.value) || 0);
+        if (finalWagerDrafts) finalWagerDrafts[i] = w ? String(w) : "";
+        if (Array.isArray(S.finalWagers)) { S.finalWagers[i] = w; send(); }
+      };
     });
     const fShow = document.getElementById("btnFinalClue");
     if (fShow) fShow.onclick = () => {

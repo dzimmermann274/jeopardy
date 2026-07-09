@@ -117,6 +117,9 @@ CHANNEL.onmessage = (ev) => {
     // with a snapshot but do NOT mark a display beat — the Host View is not a TV,
     // and must never be mistaken for one or for a second control panel.
     else if (msg.type === "host-hello") { CHANNEL.postMessage({ type: "state", state: snapshot() }); }
+    // The Host View can enter Final Jeopardy wagers "alongside" the control panel;
+    // this is the one write it's allowed. The control (which owns S) applies it.
+    else if (msg.type === "set-final-wager") { applyFinalWager(msg.teamIdx, msg.wager); }
     else if (msg.type === "display-alive") { noteDisplaySeen(); }
     else if (msg.type === "control-hello") { CHANNEL.postMessage({ type: "control-active" }); }
     else if (msg.type === "control-active") {
