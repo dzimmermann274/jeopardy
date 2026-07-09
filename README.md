@@ -123,6 +123,12 @@ has two tabs:
   team is right and judge on the spot (for an UNKNOWN clue it shows once Danny types it);
   the answer is gold while it's still host-only and turns green once it's revealed on the TV;
 - the **30-second timer** in a corner, as plain numerals, appearing only while it runs;
+- a **synced category teleprompter** while the control panel is running **Show categories** on
+  the TV: it takes over the whole host screen (pulling the host out of Question preview) with a
+  bold *GET READY TO READ CATEGORIES* while the TV holds its title card, then — a beat before
+  the first category lands on the TV — the full list of the day's categories, with a big green
+  rectangle that slides down one at a time **in sync with the TV**, so the host always knows
+  which category to read; it clears itself as the TV fades to the board;
 - a full-screen **"Ready for Final Jeopardy"** cue while the control panel is confirming the
   start, then a deliberately plain Category / Question / Answer screen for the Final;
 - during the **winner reveal**, a heads-up of **which team is announced next and their
