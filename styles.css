@@ -137,11 +137,11 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
   text-shadow: .06em .06em 0 #000; border: .3vmin solid #000; overflow: hidden; }
 .b-tile.used { color: transparent; text-shadow: none; }
 
-/* the live board, kept behind a clue while it "flies" out of its tile to full
-   screen (see startClueFly). z-index:-1 keeps it behind the clue's stacking
-   context (.disp-stage is position:fixed) but still above the black body bg. */
-#flyBoardBg { position: fixed; inset: 0; z-index: -1; display: flex; flex-direction: column; }
-#flyBoardBg > .disp-view { flex: 1; }
+/* the live board view (grid + scores strip), kept intact behind a clue while it
+   "flies" out of its tile to full screen (see startClueFly). z-index:-1 keeps it
+   behind the clue's stacking context but still above the black body bg; the
+   moved .disp-stage inside positions itself. */
+#flyBoardBg { position: fixed; inset: 0; z-index: -1; }
 
 /* clue */
 .clue-full { background: var(--board-blue); position: fixed; inset: 0; display: flex;

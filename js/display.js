@@ -42,14 +42,14 @@ function renderDisplay() {
   let flyFrom = null, flyBoardBg = null;
   if (lastRenderedView === "board" && (S.view === "clue" || S.view === "dd") && S.active) {
     const tile = document.querySelector(`.b-tile[data-cat="${S.active.cat}"][data-row="${S.active.row}"]`);
-    const boardView = document.querySelector(".disp-stage > .disp-view");
-    if (tile && boardView) {
+    const boardStage = document.querySelector(".disp-stage");   // the WHOLE board view (grid + scores strip)
+    if (tile && boardStage) {
       const r0 = tile.getBoundingClientRect();
       if (r0.width > 0 && r0.height > 0) {
         flyFrom = { left: r0.left, top: r0.top, width: r0.width, height: r0.height };
         flyBoardBg = document.createElement("div");
         flyBoardBg.id = "flyBoardBg";
-        flyBoardBg.appendChild(boardView);      // move the live board out so the #app rebuild can't destroy it
+        flyBoardBg.appendChild(boardStage);     // move it out intact so the #app rebuild can't destroy it and it doesn't shift
         document.body.appendChild(flyBoardBg);
       }
     }
@@ -142,7 +142,11 @@ function renderDisplay() {
     </div>`;
   }
 
-  const showStrip = S.phase === "play" && S.view !== "bigscores" && S.view !== "winner" && S.teams.length;
+  // The scores strip belongs on the board; the full-screen clue views (a fixed
+  // .clue-full) cover it anyway, and rendering it there makes it flash at the top
+  // during the tile-fly (the fixed clue leaves the strip as the only in-flow child).
+  const clueFullView = S.view === "clue" || S.view === "dd" || S.view === "final-category" || S.view === "final-clue";
+  const showStrip = S.phase === "play" && !clueFullView && S.view !== "bigscores" && S.view !== "winner" && S.teams.length;
   app.innerHTML = `
     <div class="disp-stage">
       ${view}
