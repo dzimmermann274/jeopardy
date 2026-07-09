@@ -145,20 +145,52 @@ open and none of them can affect the TV or the control panel.
 If the browser reloads mid-game, reopen the link: the setup screen offers **Resume that
 game** with scores and board progress intact.
 
+## Play across separate devices (optional)
+
+By default the windows sync through the browser's **BroadcastChannel**, which only connects
+tabs/windows of the **same browser on the same computer**. So the normal, most-reliable
+setup is **one computer** running the control panel with the game board on a **TV/monitor
+plugged into (or extended from) that same computer**, and the Host view in another window
+there.
+
+To instead put the control panel, the TV board, and the Host view on **different devices**
+on the same Wi-Fi (e.g. the host panel on a Windows laptop, the board on a smart-TV
+browser), start the included relay on ONE machine **instead of** `python3 -m http.server`:
+
+```
+python3 server.py            # or:  python3 server.py 9000   to choose a port
+```
+
+It prints three addresses — control panel, TV board (`…/#display`), and Host view
+(`…/host.html`). Open each on whichever device you want it on; every browser on the network
+stays in sync. The control panel also shows a **LAN sync** badge and lists those addresses
+under **Display setup** and Step 3.
+
+Notes:
+- Plain Python standard library — no installs. First run on Windows, allow Python through
+  the firewall so other devices can reach it.
+- Same-computer windows still also use BroadcastChannel, so local windows stay instant and
+  nothing breaks if the relay hiccups. If `server.py` isn't running, the game just works in
+  the reliable local mode above (it auto-detects whether the relay is there).
+- Everything stays on your own network — no cloud, works offline.
+
 Note: the control panel uses in-page dialogs (not the browser's popup boxes) so the TV
 never gets kicked out of fullscreen. Bump the `?v=` number on the script tags in
 `index.html` on each deploy so browsers pick up new code immediately.
 
 ## How it works (for future changes)
 
-Plain HTML/CSS/JS, no build step, no backend. Deployed as-is on GitHub Pages.
+Plain HTML/CSS/JS, no build step, no backend (the optional `server.py` relay is pure
+standard-library and only needed for cross-device play). Deployed as-is on GitHub Pages.
 
 | File | Responsibility |
 |------|----------------|
 | `index.html` | Shell; loads everything. Same page is both apps: plain = control panel, `#display` = TV view. |
-| `host.html` | The **Host view** page — a standalone, read-only companion screen (host's Mac/iPad). Loads only `js/host.js`; its styles are inline. |
+| `host.html` | The **Host view** page — a standalone, read-only companion screen (host's Mac/iPad). Loads `js/bus.js` then `js/host.js`; its styles are inline. |
 | `styles.css` | All styles. Control-panel styles under `body.control`, TV styles under `body.display`. |
-| `js/core.js` | Shared state object `S`, BroadcastChannel sync, localStorage save/resume, helpers. |
+| `js/bus.js` | The window/device sync transport: a drop-in `createBus()` wrapping BroadcastChannel (same-machine), plus an OPTIONAL LAN relay (SSE receive + POST send) auto-enabled only when served by `server.py`. Both `core.js` and `host.js` use it. |
+| `server.py` | Optional LAN relay + static file server (stdlib only) for cross-device play — see "Play across separate devices". Not needed for same-computer use. |
+| `js/core.js` | Shared state object `S`, the sync bus (`CHANNEL = createBus(...)`), localStorage save/resume, helpers. |
 | `js/data.js` | Google Sheets fetch (whole-workbook xlsx export; CSV fallbacks), workbook parser (tab-per-category), legacy row-list parser. |
 | `js/control.js` | The entire control-panel UI and game-flow handlers, plus the **Display setup** dialog (multi-screen deploy via the Window Management API + the fade failsafes). |
 | `js/display.js` | The entire TV rendering (board, clue, Daily Double, Final, scores, timer) and the fade **curtain** overlay driven by `S.stage` (`game`/`black`/`title`). |
@@ -191,8 +223,9 @@ Design rules to preserve when adding features:
   `ddDraft`, `finalWagerDrafts` in `control.js`).
 
 Run locally: any static server in this folder, e.g. `python3 -m http.server 8123`, then
-open `http://localhost:8123/`. (Opening `index.html` directly as a file breaks the
-Google-Sheets fetch and the window sync — always use a server or the live site.)
+open `http://localhost:8123/` (or `python3 server.py` to also sync across devices on your
+Wi-Fi — see "Play across separate devices"). Opening `index.html` directly as a file breaks
+the Google-Sheets fetch and the window sync — always use a server or the live site.
 `test-data/filled-test.xlsx` is a filled example workbook for testing the parser.
 
 Idea backlog: buzzer support, sounds, board-fill animation, themes, round-2 support in

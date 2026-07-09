@@ -148,6 +148,33 @@ function externalScreenOf(sd) {
    typed team names first so re-rendering the setup screen never wipes them. */
 function setStage(stage) { collectTeamNames(); update(() => { S.stage = stage; }); if (screensOv) renderScreensDialog(); }
 
+/* ---- LAN sync status (only meaningful when served by server.py) ----
+   In the normal one-computer setup these return "" and the panel is unchanged.
+   When the game is shared over Wi-Fi, they show the mode and the addresses to
+   open the TV board / Host View on OTHER devices. */
+function netUrls() {
+  const info = CHANNEL.net && CHANNEL.net.info;
+  if (!info || !info.ip) return null;
+  const base = "http://" + info.ip + ":" + info.port + "/";
+  return { control: base, display: base + "#display", host: base + "host.html" };
+}
+function netPillHtml() {
+  if (!CHANNEL.net || !CHANNEL.net.enabled) return "";
+  const on = CHANNEL.net.connected;
+  return `<span class="status-pill" title="This game is shared over your Wi-Fi — other devices can join">
+    <span class="dot ${on ? "on" : ""}"></span>LAN sync ${on ? "on" : "connecting…"}</span>`;
+}
+function netDevicesHtml() {
+  const u = netUrls();
+  if (!u) return "";
+  return `<div class="setup-note" style="margin-top:12px">
+    🌐 <b>This game is shared over your Wi-Fi.</b> On another device's browser (same network), open:
+    <div style="margin-top:8px"><b>TV / game board:</b> <code>${esc(u.display)}</code></div>
+    <div style="margin-top:4px"><b>Host view:</b> <code>${esc(u.host)}</code></div>
+    <p class="hint" style="margin-top:8px">You can still put the board on a screen attached to THIS computer with “Open display window”. If a device won't connect, make sure it's on the same Wi-Fi and that Python is allowed through this computer's firewall.</p>
+  </div>`;
+}
+
 /* A compact copy of the fade failsafes, shown directly on the control panel (in
    addition to the Display setup dialog) so they're always one click away. */
 function failsafeBarHtml() {
@@ -291,6 +318,13 @@ function renderScreensDialog() {
 
   const noChrome = !chrome ? `<p class="screens-note">⚠️ Automatic external-display placement needs Google Chrome or Edge — the options below still work.</p>` : "";
   const noExt = (chrome && !extended) ? `<p class="screens-note">No external display detected. Connect a TV/projector as an <b>extended</b> display (not mirrored) to unlock the external-screen options.</p>` : "";
+  const u = netUrls();
+  const netSection = u ? `
+      <div class="screens-section">
+        <div class="sec-title">🌐 Other devices — same Wi-Fi</div>
+        <p class="screens-note">This game is shared over your network. To use a <b>separate</b> device as the TV or Host View, open in that device's browser:</p>
+        <p class="screens-note"><b>TV / game board:</b> <code>${esc(u.display)}</code><br><b>Host view:</b> <code>${esc(u.host)}</code></p>
+      </div>` : "";
 
   screensOv.innerHTML = `
     <div class="modal-box screens-dialog">
@@ -299,6 +333,7 @@ function renderScreensDialog() {
         <span class="status-pill"><span class="dot ${displayOpen ? "on" : ""}"></span>${displayOpen ? "Display open" : "No display yet"}</span>
       </div>
       ${noChrome}${noExt}
+      ${netSection}
       ${externalHtml}
       ${mainHtml}
       ${failHtml}
@@ -530,8 +565,11 @@ function renderSetup() {
   <div class="ctl-wrap">
     <div class="ctl-header">
       <h1>🎯 Jeopardy <span>Control Panel</span></h1>
-      <span class="status-pill"><span class="dot ${displayLooksOpen() ? "on" : ""}"></span>
-        Display window ${displayLooksOpen() ? "open" : "not open yet"}</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="status-pill"><span class="dot ${displayLooksOpen() ? "on" : ""}"></span>
+          Display window ${displayLooksOpen() ? "open" : "not open yet"}</span>
+        ${netPillHtml()}
+      </div>
     </div>
     ${otherControlBannerHtml()}
 
@@ -602,6 +640,7 @@ function renderSetup() {
         <button class="btn primary" id="btnStart" ${S.game ? "" : "disabled"}>Start the game ▶</button>
       </div>
       ${failsafeBarHtml()}
+      ${netDevicesHtml()}
       ${S.game ? "" : `<p class="hint">Load questions first to enable Start.</p>`}
     </div>
   </div>`;
@@ -698,6 +737,7 @@ function renderPlay() {
       <h1>🎯 ${esc(S.game && S.game.title ? S.game.title : "Jeopardy")} <span>Control Panel</span></h1>
       <div class="ctl-toolbar">
         <span class="status-pill"><span class="dot ${displayLooksOpen() ? "on" : ""}"></span>Display</span>
+        ${netPillHtml()}
         <button class="btn small" id="btnReopenDisplay">Open display</button>
         <button class="btn small" id="btnScreens">Display setup</button>
         ${isWinner
