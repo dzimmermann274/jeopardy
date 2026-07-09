@@ -20,6 +20,7 @@ let finalWagerDrafts = null;              // array of strings, one per team
 let liveAnswerDraft = "";                 // host-typed answer (UNKNOWN questions / overrides)
 let liveAnswerOpen = false;               // keep the override <details> open across re-renders
 let categoriesShown = false;              // the category intro has played this game (resets on reload / new game)
+let hostNoteDraft = "";                   // "Note from Danny" being typed (survives re-renders like the other drafts)
 
 /* Fire the full-screen category reveal on the display, and grey the button. */
 function showCategories() {
@@ -27,6 +28,13 @@ function showCategories() {
   categoriesShown = true;
   CHANNEL.postMessage({ type: "play-intro" });   // transient — not part of saved state
   renderControl();
+}
+
+/* Push a "Note from Danny" to the passive Host View (host.html). Stored in S so
+   it rides the normal broadcast, survives a Host-View reopen, and clears on a new
+   game; the TV display never renders it. An empty draft clears the note. */
+function sendHostNote() {
+  update(() => { S.hostNote = { text: hostNoteDraft.trim(), ts: Date.now() }; });
 }
 
 /* Open (or reuse) the single display window. `geom` is an optional
@@ -647,6 +655,7 @@ function renderSetup() {
 function renderPlay() {
   const r = currentRound();
   const cl = activeClue();
+  const activeHostNote = (S.hostNote && S.hostNote.text) || "";   // note currently on the Host View
   const inClue = S.view === "clue" || S.view === "dd";
   const isDD = cl && cl.dd && S.dd;
   const isFinal = S.view === "final-intro" || S.view === "final-category" || S.view === "final-clue"
@@ -702,6 +711,23 @@ function renderPlay() {
             </div>
           </div>`).join("")}
       </div>
+    </div>
+
+    <div class="card">
+      <h2>🧑‍🏫 Host view <span style="font-weight:400;font-size:14px;opacity:.75">— a private screen for whoever reads &amp; judges</span></h2>
+      <p class="hint">Open it on the host's Mac or iPad. It shows the current question, the answer (even before it's revealed on the TV), the 30-second timer, and any note you send below — and never changes the game.</p>
+      <div class="field-row">
+        <button class="btn" id="btnOpenHostView">Open host view (new tab)</button>
+        <span class="hint">…or bookmark <b>this game's address + <code>host.html</code></b> on the host's device.</span>
+      </div>
+      <div class="field-row" style="margin-top:6px">
+        <input type="text" id="hostNoteInput" placeholder="Type a note for the host (it pops up on their screen)…" value="${esc(hostNoteDraft)}">
+        <button class="btn primary" id="btnSendHostNote">Send note</button>
+        <button class="btn" id="btnClearHostNote" ${activeHostNote ? "" : "disabled"}>Clear</button>
+      </div>
+      ${activeHostNote
+        ? `<p class="hint">📩 The host is currently seeing: “<b>${esc(activeHostNote)}</b>”.</p>`
+        : `<p class="hint">No note on the host screen right now.</p>`}
     </div>
   </div>`;
 
@@ -784,6 +810,19 @@ function renderPlay() {
       if (v !== null && v.trim() !== "" && !isNaN(+v)) update(() => { S.teams[i].score = Math.round(+v); });
     });
   });
+
+  /* Host view: open the passive screen, and send/clear the "Note from Danny". */
+  const bOpenHostView = document.getElementById("btnOpenHostView");
+  if (bOpenHostView) bOpenHostView.onclick = () => { window.open("host.html", "ppiJeopardyHost"); };
+  const hnInput = document.getElementById("hostNoteInput");
+  if (hnInput) {
+    hnInput.oninput = (e) => { hostNoteDraft = e.target.value; };
+    hnInput.onkeydown = (e) => { if (e.key === "Enter") sendHostNote(); };
+  }
+  const bSendHostNote = document.getElementById("btnSendHostNote");
+  if (bSendHostNote) bSendHostNote.onclick = sendHostNote;
+  const bClearHostNote = document.getElementById("btnClearHostNote");
+  if (bClearHostNote) bClearHostNote.onclick = () => { hostNoteDraft = ""; update(() => { S.hostNote = { text: "", ts: Date.now() }; }); };
 
   wireMain();
 
