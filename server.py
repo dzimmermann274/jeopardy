@@ -6,13 +6,17 @@ Run this INSTEAD of `python3 -m http.server` when you want the control panel,
 the TV display, and the Host View to live on DIFFERENT devices on the same
 Wi-Fi (e.g. host panel on a Windows laptop, board on a smart-TV browser).
 
+Easiest: double-click "Start Jeopardy.command" (Mac) or "Start Jeopardy
+(Windows).bat" — they just run this. Or from a terminal:
+
     python3 server.py            # serves on port 8123
     python3 server.py 9000       # ...or any port you pass
+    python3 server.py --no-open  # don't auto-open the connect page
 
-Then, on each device's browser (all on the same network), open the address it
-prints — e.g. the control panel at  http://<your-ip>:8123/ , the TV at
-http://<your-ip>:8123/#display , and the Host View at
-http://<your-ip>:8123/host.html .
+On start it opens the CONNECT PAGE (connect.html) in the browser: each screen's
+address shown big with a QR code to scan. Short addresses for easy typing:
+/tv -> the TV board, /host -> the Host view, /connect -> that page. The
+computer's name.local address is shown too, since it survives IP changes.
 
 It's just the standard library — no pip installs. If you'd rather everything run
 on ONE computer (the most reliable setup), you don't need this at all: use the
@@ -25,15 +29,26 @@ out to every other connected device. Same-machine windows still also use the
 browser's BroadcastChannel, so nothing is lost if this relay hiccups.
 """
 
+import errno
 import json
 import os
 import queue
 import socket
 import sys
 import threading
+import urllib.request
+import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))   # serve the app next to this file
+
+# Short, easy-to-type addresses (what the connect page and QR codes use).
+SHORTCUTS = {
+    "/tv": "/#display",         # the TV board
+    "/host": "/host.html",      # the Host view
+    "/connect": "/connect.html",
+    "/join": "/connect.html",
+}
 
 # id -> Queue of pending message strings for that client's SSE stream
 _clients = {}
@@ -50,6 +65,19 @@ def lan_ip():
         return "127.0.0.1"
     finally:
         s.close()
+
+
+def mdns_name():
+    """The computer's `name.local` address — stays the same even if the IP changes.
+
+    Resolves via mDNS/Bonjour: works from Apple devices and modern Windows/Linux;
+    some smart TVs can't use it, which is why the IP is always shown too.
+    """
+    try:
+        name = socket.gethostname().split(".")[0].strip()
+    except Exception:
+        return ""
+    return (name.lower() + ".local") if name else ""
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -72,8 +100,16 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if path in SHORTCUTS:
+            self.send_response(302)
+            self.send_header("Location", SHORTCUTS[path])
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if path == "/net-info":
-            return self._send_json({"relay": True, "ip": lan_ip(), "port": self.server.server_address[1]})
+            return self._send_json({"relay": True, "ip": lan_ip(),
+                                    "port": self.server.server_address[1],
+                                    "name": mdns_name()})
         if path == "/events":
             return self._serve_events()
         return super().do_GET()
@@ -151,30 +187,69 @@ class Handler(SimpleHTTPRequestHandler):
                     del _clients[cid]
 
 
+def our_server_already_on(port):
+    """True if something answering like this relay is already serving `port`."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:%d/net-info" % port, timeout=2) as r:
+            return bool(json.load(r).get("relay"))
+    except Exception:
+        return False
+
+
 def main():
     port = 8123
-    if len(sys.argv) > 1:
-        try:
-            port = int(sys.argv[1])
-        except ValueError:
-            print("Port must be a number, e.g.  python3 server.py 8123")
-            sys.exit(1)
+    no_open = False
+    for arg in sys.argv[1:]:
+        if arg == "--no-open":                  # skip auto-opening the browser
+            no_open = True
+        else:
+            try:
+                port = int(arg)
+            except ValueError:
+                print("Port must be a number, e.g.  python3 server.py 8123")
+                sys.exit(1)
 
-    httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    connect_url = "http://localhost:%d/connect" % port
+
+    try:
+        httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE and our_server_already_on(port):
+            # Double-clicked the launcher twice? Totally fine — reuse the running one.
+            print("The Jeopardy server is ALREADY running — using that one.")
+            print("Opening the connect page: %s" % connect_url)
+            if not no_open:
+                webbrowser.open(connect_url)
+            return
+        print("Port %d is busy. Close the other program using it, or pick" % port)
+        print("another port, e.g.:  python3 server.py %d" % (port + 1))
+        sys.exit(1)
+
     httpd.daemon_threads = True
     ip = lan_ip()
-    print("=" * 60)
-    print("  Jeopardy LAN server is running.")
-    print("  Open these in a browser on any device on the same Wi-Fi:")
+    name = mdns_name()
+    print("=" * 62)
+    print("  Jeopardy LAN server is running.  KEEP THIS WINDOW OPEN.")
+    print()
+    print("  A 'Connect your devices' page is opening in your browser --")
+    print("  it shows these addresses big, with QR codes you can scan:")
     print()
     print("    Control panel :  http://%s:%d/" % (ip, port))
-    print("    TV display    :  http://%s:%d/#display" % (ip, port))
-    print("    Host view     :  http://%s:%d/host.html" % (ip, port))
+    print("    TV display    :  http://%s:%d/tv" % (ip, port))
+    print("    Host view     :  http://%s:%d/host" % (ip, port))
+    print("    Connect page  :  http://%s:%d/connect" % (ip, port))
+    if name:
+        print()
+        print("  If that number ever changes, this name works too:")
+        print("    http://%s:%d/  (and /tv, /host, /connect)" % (name, port))
     print()
-    print("  (On the SAME machine you can also use http://localhost:%d/ .)" % port)
-    print("  First run on Windows: allow Python through the firewall so other")
-    print("  devices can connect. Stop the server with Ctrl+C.")
-    print("=" * 60)
+    print("  First run: if the firewall asks, click Allow so other devices")
+    print("  can connect. Stop the server with Ctrl+C.")
+    print("=" * 62)
+    sys.stdout.flush()   # show the banner even when output is piped/logged
+    if not no_open:
+        # Give the server a beat to start accepting, then pop the connect page.
+        threading.Timer(0.8, webbrowser.open, args=(connect_url,)).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

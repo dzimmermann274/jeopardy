@@ -161,20 +161,29 @@ there.
 
 To instead put the control panel, the TV board, and the Host view on **different devices**
 on the same Wi-Fi (e.g. the host panel on a Windows laptop, the board on a smart-TV
-browser), start the included relay on ONE machine **instead of** `python3 -m http.server`:
+browser), run the included relay on ONE machine. **Easiest: double-click
+`Start Jeopardy.command`** (Mac) or **`Start Jeopardy (Windows).bat`** — no typing. (From a
+terminal it's `python3 server.py`, optionally with a port: `python3 server.py 9000`.)
 
-```
-python3 server.py            # or:  python3 server.py 9000   to choose a port
-```
+The server then **opens the "Connect your devices" page** (`connect.html`, also at `/connect`)
+in the browser: each screen's address shown big, **with a QR code** — scan the Host view one
+with an iPad/phone camera, and type the short TV address into the TV's browser. Every
+browser on the network stays in sync. The control panel also shows a **LAN sync** badge and
+lists the addresses under **Display setup** and Step 3.
 
-It prints three addresses — control panel, TV board (`…/#display`), and Host view
-(`…/host.html`). Open each on whichever device you want it on; every browser on the network
-stays in sync. The control panel also shows a **LAN sync** badge and lists those addresses
-under **Display setup** and Step 3.
+Short addresses (what the connect page shows): **`/tv`** → the TV board, **`/host`** → the
+Host view, **`/connect`** → the connect page itself.
+
+**Will the address be the same next time?** Usually yes — bookmarks are fine. The IP number
+can occasionally change (router restart, new network), so the connect page always shows the
+*current* one; the server also prints a `name.local` address that survives IP changes
+(works from Apple devices and modern laptops; some TVs want the IP form).
 
 Notes:
 - Plain Python standard library — no installs. First run on Windows, allow Python through
-  the firewall so other devices can reach it.
+  the firewall so other devices can reach it. Keep the server window open while you play.
+- Double-clicking the launcher when the server is already running is harmless — it notices
+  and just reopens the connect page.
 - Same-computer windows still also use BroadcastChannel, so local windows stay instant and
   nothing breaks if the relay hiccups. If `server.py` isn't running, the game just works in
   the reliable local mode above (it auto-detects whether the relay is there).
@@ -193,9 +202,11 @@ standard-library and only needed for cross-device play). Deployed as-is on GitHu
 |------|----------------|
 | `index.html` | Shell; loads everything. Same page is both apps: plain = control panel, `#display` = TV view. |
 | `host.html` | The **Host view** page — a standalone, read-only companion screen (host's Mac/iPad). Loads `js/bus.js` then `js/host.js`; its styles are inline. |
+| `connect.html` | The **"Connect your devices"** page `server.py` auto-opens — each screen's address big with a QR code (from `/net-info`). Standalone; loads only `js/vendor/qrcode.js`, styles inline. |
+| `Start Jeopardy.command` / `Start Jeopardy (Windows).bat` | Double-click launchers that just run `python3 server.py` — for game night without a terminal. |
 | `styles.css` | All styles. Control-panel styles under `body.control`, TV styles under `body.display`. |
 | `js/bus.js` | The window/device sync transport: a drop-in `createBus()` wrapping BroadcastChannel (same-machine), plus an OPTIONAL LAN relay (SSE receive + POST send) auto-enabled only when served by `server.py`. Both `core.js` and `host.js` use it. |
-| `server.py` | Optional LAN relay + static file server (stdlib only) for cross-device play — see "Play across separate devices". Not needed for same-computer use. |
+| `server.py` | Optional LAN relay + static file server (stdlib only) for cross-device play — see "Play across separate devices". Auto-opens `/connect`, serves the `/tv` `/host` `/connect` short redirects, reports `ip`/`name`/`port` at `/net-info`. Not needed for same-computer use. |
 | `js/core.js` | Shared state object `S`, the sync bus (`CHANNEL = createBus(...)`), localStorage save/resume, helpers. |
 | `js/data.js` | Google Sheets fetch (whole-workbook xlsx export; CSV fallbacks), workbook parser (tab-per-category), legacy row-list parser. |
 | `js/control.js` | The entire control-panel UI and game-flow handlers, plus the **Display setup** dialog (multi-screen deploy via the Window Management API + the fade failsafes). |
@@ -204,6 +215,7 @@ standard-library and only needed for cross-device play). Deployed as-is on GitHu
 | `js/main.js` | Boot: decides which mode this window is. |
 | `js/host.js` | The Host view logic: a BroadcastChannel listener with two modes — **Live view** (current question, host-visible answer, timer, winner-reveal heads-up, notes, Final Jeopardy wager entry) and **Question preview** (a board browser showing each clue's question/picture/answer plus the scores). Reads state; its only write is `set-final-wager`. |
 | `js/vendor/xlsx.full.min.js` | SheetJS (reads the workbook in the browser). |
+| `js/vendor/qrcode.js` | qrcode-generator (MIT, Kazuhiko Arase) — draws the QR codes on `connect.html`. |
 | `tools/make_template.py` | Generates `template/Jeopardy Questions.xlsx` (openpyxl). The parser and this template are a matched pair — change them together. |
 
 Design rules to preserve when adding features:
