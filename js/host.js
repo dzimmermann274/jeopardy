@@ -159,8 +159,8 @@ function qaHtml(o) {
       <span class="qa-cat">${fmtText(o.label)}</span>
     </div>
     <div class="qa-q">${fmtText(o.question)}</div>
-    <div class="qa-answer">
-      <div class="a-label">Answer</div>
+    <div class="qa-answer ${o.revealed ? "revealed" : ""}">
+      <div class="a-label">Answer${o.revealed ? " — revealed on the TV" : " — only you can see this"}</div>
       ${answerInner}
     </div>
     <div class="qa-status ${o.revealed ? "on" : "off"}">
