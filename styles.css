@@ -406,48 +406,62 @@ body.display.is-fullscreen .fs-prompt { display: none; }
   color: var(--value-gold); font-size: min(3.4vw, 5vh); letter-spacing: .2em; text-shadow: .05em .05em 0 #000; margin-bottom: 1vh; }
 .standings-list { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; width: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  gap: min(1.2vh, calc(4.5vh / var(--nrows, 3))); }
+  gap: 1.4vh; }
 /* horizontal band: [place] [name/players] ......... [SCORE] [FINAL JEOPARDY RESULT]
-   so both numbers are big and readable. transition drives the "crowned" emphasis. */
-.standing-card { display: flex; align-items: center; gap: 2vw; width: min(74vw, 1220px);
+   so both numbers are big and readable. Each card gets a FIXED height sized so the
+   full field of N cards (+ the 1.4vh gaps) fills the list top-to-bottom — no dead
+   space at the end, and a constant card size while places are still being revealed
+   (they stack up from the bottom, so nothing resizes mid-reveal). transition drives
+   the "crowned" emphasis. */
+/* width is pure vw (not px-capped) so the card scales with the viewport in lockstep
+   with its vw-based interior (rank, padding, gaps, metric columns). A px cap froze
+   the card while the interior kept growing on >1080p displays (e.g. a 4K TV), which
+   overflowed the metrics and collapsed the name column — overflow:hidden is a final
+   safety net so nothing can ever spill past the border. */
+.standing-card { flex: 0 0 auto; height: calc((88vh - 1.4vh * (var(--nrows, 3) - 1)) / var(--nrows, 3));
+  display: flex; align-items: center; gap: 2vw; width: 84vw; overflow: hidden;
   background: var(--board-blue); border: .35vmin solid #000; border-radius: 1.5vmin;
-  box-shadow: 0 .5vmin 2.4vmin rgba(0,0,0,.4); padding: min(1.6vh, calc(7.5vh / var(--nrows, 3))) 2.2vw;
+  box-shadow: 0 .5vmin 2.4vmin rgba(0,0,0,.4); padding: 0 2.4vw;
   transition: transform .55s ease, opacity .55s ease; }
-.sc-rank { flex: 0 0 auto; width: 9vw; text-align: center; }
+.sc-rank { flex: 0 0 auto; width: 10vw; text-align: center; }
 .sc-place { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); letter-spacing: .02em;
-  line-height: 1; text-transform: uppercase; text-shadow: .05em .05em 0 #000; font-size: min(3vw, calc(15vh / var(--nrows, 3))); }
+  line-height: 1; text-transform: uppercase; text-shadow: .05em .05em 0 #000; font-size: min(3.4vw, calc(21vh / var(--nrows, 3))); }
 .sc-id { flex: 1 1 auto; min-width: 0; text-align: left; }
 .sc-name { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase; color: #fff; line-height: 1.02;
   text-shadow: .05em .05em 0 #000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: min(3.4vw, calc(16.5vh / var(--nrows, 3))); }
-.sc-players { color: #c7d0ff; margin-top: .3vh; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: min(1.4vw, calc(6.5vh / var(--nrows, 3))); }
-.sc-metrics { flex: 0 0 auto; display: flex; gap: 2.2vw; }
-.sc-metric { text-align: right; min-width: 11.5vw; }
+  font-size: min(3.8vw, calc(27vh / var(--nrows, 3))); }
+.sc-players { color: #c7d0ff; margin-top: .4vh; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: min(1.7vw, calc(9vh / var(--nrows, 3))); }
+.sc-metrics { flex: 0 0 auto; display: flex; gap: 2.4vw; }
+.sc-metric { text-align: right; min-width: 13vw; }
 .sc-metric-label { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aeb7da; white-space: nowrap;
-  font-size: min(1.15vw, calc(5.2vh / var(--nrows, 3))); margin-bottom: .3vh; }
+  font-size: min(1.35vw, calc(7vh / var(--nrows, 3))); margin-bottom: .5vh; }
 .sc-balance { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); line-height: 1;
-  text-shadow: .05em .05em 0 #000; font-size: min(4.4vw, calc(22vh / var(--nrows, 3))); }
+  text-shadow: .05em .05em 0 #000; font-size: min(4.7vw, calc(35vh / var(--nrows, 3))); }
 .sc-balance.neg { color: #ff7070; }
 .sc-result { font-family: Impact, "Arial Black", sans-serif; line-height: 1; text-shadow: .05em .05em 0 #000;
-  font-size: min(4.4vw, calc(22vh / var(--nrows, 3))); }
+  font-size: min(4.7vw, calc(35vh / var(--nrows, 3))); }
 .sc-result.up { color: #57e08a; }
 .sc-result.down { color: #ff7d7d; }
 .sc-result.flat { color: #c7d0ff; }
 .sc-champ-tag { display: inline-block; font-family: Impact, "Arial Black", sans-serif; color: #111;
   background: var(--value-gold); padding: .3vh 1.1vw; border-radius: .7vmin; letter-spacing: .16em; line-height: 1;
-  margin-bottom: .5vh; box-shadow: 0 0 2.6vmin rgba(255,204,0,.75); font-size: min(1.8vw, calc(8vh / var(--nrows, 3))); }
+  margin-bottom: .6vh; box-shadow: 0 0 2.6vmin rgba(255,204,0,.75); font-size: min(2.1vw, calc(10vh / var(--nrows, 3))); }
 /* champion card — gold, glowing, larger metrics */
 .standing-card.champ { background: linear-gradient(120deg, #2a2fff 0%, var(--board-blue) 100%);
   border-color: var(--value-gold); box-shadow: 0 0 5vmin rgba(255,204,0,.6); }
 /* champion name keeps the normal size (the crowned scale + gold + badge carry the
    emphasis) so long names aren't squeezed out; the metrics get a modest bump. */
 .standing-card.champ .sc-name { text-shadow: .05em .05em 0 #000, 0 0 4vmin rgba(255,204,0,.6); }
-.standing-card.champ .sc-balance, .standing-card.champ .sc-result { font-size: min(4.8vw, calc(23vh / var(--nrows, 3))); }
-.standing-card.champ .sc-metric { min-width: 13vw; }
+.standing-card.champ .sc-balance, .standing-card.champ .sc-result { font-size: min(5.2vw, calc(38vh / var(--nrows, 3))); }
+.standing-card.champ .sc-metric { min-width: 15vw; }
 /* winner crowned (all places shown): enlarge the champion, recede the rest */
 .fj-standings.crowned .standing-card:not(.champ) { transform: scale(.93); opacity: .82; }
 .fj-standings.crowned .standing-card.champ { transform: scale(1.08); }
+/* tie for first: two adjacent champions would scale up into each other's gap and
+   overlap, so co-champions hold full size (the gold + CHAMPION badge carry the
+   emphasis) while the rest still recede. */
+.fj-standings.crowned.multi-champ .standing-card.champ { transform: none; }
 /* while a card is flying in big from the centre (JS toggles .hero-fly) */
 .standing-card.hero-fly { box-shadow: 0 1.5vmin 7vmin rgba(0,0,0,.55), 0 0 6vmin rgba(255,204,0,.35); }
 .standing-card.champ.hero-fly { box-shadow: 0 1.5vmin 7vmin rgba(0,0,0,.55), 0 0 9vmin rgba(255,204,0,.75); }
