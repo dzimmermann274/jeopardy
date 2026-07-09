@@ -31,6 +31,17 @@ let lastRenderedView = null; // the S.view we last rendered (to detect board -> 
 let flying = false;          // a "tile flies to full screen" animation is in progress
 let lastFinalReveal = 0;     // final-winner: places unveiled at the last render (animate only the newest)
 let winnerHeroTimer = null;  // pending "hold in center, then drop to slot" release for the newest team
+// Fitted clue/answer font sizes, keyed by the clue's visible content. A re-render
+// that doesn't change the clue (e.g. starting the timer) reuses the size we
+// already fitted, so the text renders pre-fitted instead of flashing large then
+// shrinking once the picture loads. lastClueFitKey ties the current clue DOM to
+// its cache entry so fitClue knows where to store the converged size.
+let fitCache = {};
+let lastClueFitKey = null;
+/* Drop the fitted-size cache (its sizes are viewport-relative). Called on a real
+   viewport change so the next render re-fits fresh. A function (not a bare
+   assignment from main.js) keeps the write in display.js's own scope. */
+function clearFitCache() { fitCache = {}; }
 
 function renderDisplay() {
   // Clear any leftover fly background from a previous flight before we rebuild.
@@ -134,10 +145,10 @@ function renderDisplay() {
     // show the settled state (small "CATEGORY" header + the category name).
     view = `<div class="clue-full fj-screen fj-cat"><div class="fj-rays"></div>
       <div class="fj-content">
-        <div class="fj-cat-word${firstOfView ? " anim-catword" : ""}">CATEGORY</div>
+        <div class="fj-cat-word${firstOfView ? " anim-catword" : ""}">FINAL JEOPARDY — CATEGORY</div>
         <div class="fj-cat-name${firstOfView ? " anim-catname" : ""}">${fmtText(S.game.final.category)}</div>
       </div>
-      ${firstOfView ? `<div class="fj-cat-big"><span>CATEGORY</span></div>` : ""}
+      ${firstOfView ? `<div class="fj-cat-big"><span>FINAL JEOPARDY<br>CATEGORY</span></div>` : ""}
     </div>`;
   } else if (S.view === "final-clue") {
     const f = S.game.final;
@@ -211,10 +222,18 @@ function renderDisplay() {
   // first). Skipped on "reveal all" (a multi-step jump), on the loader (0), and on
   // a fresh entry/resume into the view (!firstOfView) so a reopened display window
   // reconstructs the standings statically instead of spuriously re-flying place 1.
-  if (S.view === "final-winner" && !firstOfView
-      && (S.finalReveal || 0) - prevFinalReveal === 1 && (S.finalReveal || 0) > 0) {
-    const card = document.querySelector(".standings-list .standing-card");   // first = newest = top of the stack
-    if (card) startWinnerHero(card);
+  if (S.view === "final-winner") {
+    const N = S.teams.length;
+    const revealed = Math.min(S.finalReveal || 0, N);
+    if (!firstOfView && revealed - prevFinalReveal === 1 && revealed > 0) {
+      const card = document.querySelector(".standings-list .standing-card");   // first = newest = top of the stack
+      if (card) startWinnerHero(card);
+    }
+    // Winner crowned (every place shown): grow the champion, recede the rest.
+    // Added next frame so it transitions smoothly from the freshly-rendered state.
+    if (revealed >= N && N > 0) {
+      requestAnimationFrame(() => { const s = document.querySelector(".fj-standings"); if (s) s.classList.add("crowned"); });
+    }
   }
   requestAnimationFrame(fitClue);     // correct once layout/fonts have settled (skipped while flying)
   setTimeout(fitClue, 250);           // backup in case fonts/layout settle later
@@ -231,11 +250,12 @@ function startWinnerHero(card) {
   if (!to.width || !to.height) return;
   const vw = window.innerWidth, vh = window.innerHeight;
   const champ = card.classList.contains("champ");
-  // Scale so the hero is clearly large in the centre but always fits; force a real
-  // enlargement (the resting card is already fairly wide) and give the champion more.
-  let scale = Math.min((vw * 0.9) / to.width, (vh * (champ ? 0.62 : 0.56)) / to.height, champ ? 3.2 : 2.8);
+  // Scale so the hero is clearly large in the centre but always fits (the resting
+  // card is a wide band, so the enlargement is modest — the long hold below is
+  // what lets players read the big numbers). The champion gets a little more.
+  let scale = Math.min((vw * 0.96) / to.width, (vh * (champ ? 0.6 : 0.54)) / to.height, 2.4);
   if (!(scale > 0.2)) return;
-  scale = Math.max(scale, champ ? 1.4 : 1.3);
+  scale = Math.max(scale, champ ? 1.22 : 1.15);
   const cx = to.left + to.width / 2, cy = to.top + to.height / 2;
   const tx = (vw / 2 - cx), ty = (vh * 0.45 - cy);   // toward the centre (a hair above middle)
   card.style.transformOrigin = "center center";
@@ -261,7 +281,7 @@ function startWinnerHero(card) {
       if (e.propertyName === "transform") { card.removeEventListener("transitionend", h); finish(); }
     });
     setTimeout(finish, 1000);                          // fallback if transitionend never fires
-  }, 1150);                                            // the dramatic hold in the centre
+  }, 3200);                                            // hold large in the centre so players can read the result
 }
 
 /* Grow the just-rendered clue out of the tile it was picked from (FLIP): start it
@@ -398,6 +418,7 @@ function fitClue() {
   if (flying) return;   // the clue is mid-flight (transformed) — measuring it now would be wrong
   const inner = document.querySelector(".clue-full .clue-inner");
   if (!inner) return;
+  if (inner.classList.contains("prefit")) return;   // already showing a fitted size for this exact clue — never re-shrink
   const els = [inner.querySelector(".clue-text"), inner.querySelector(".clue-answer")].filter(Boolean);
   if (!els.length) return;
   // Measure the real content extent (first child's top to last child's bottom),
@@ -428,6 +449,12 @@ function fitClue() {
     }
     if (!shrunk) break;   // hit the minimum font — accept it
   }
+  // Remember the converged sizes so a re-render of this same clue paints them
+  // straight away (no flash-large-then-shrink when a picture reloads).
+  if (lastClueFitKey) {
+    const t = inner.querySelector(".clue-text"), a = inner.querySelector(".clue-answer");
+    fitCache[lastClueFitKey] = { text: t && t.style.fontSize, answer: a && a.style.fontSize };
+  }
 }
 
 /* A picture that fails to load must not vanish silently: show a visible
@@ -446,12 +473,12 @@ function photoZoomHtml(imgs) {
     ${imgs.map(u => `<img class="pz-img" src="${esc(u)}" alt="" onerror="imgFail(this)">`).join("")}</div>`;
 }
 
-/* The Final Jeopardy standings reveal (the "final-winner" view): the whole
-   ranked board is laid out 1st place at the top -> last place at the bottom, but
-   it's UNVEILED from the bottom up (last place first) as the host steps through
-   it. S.finalReveal is how many places are showing; every other slot is a masked
-   placeholder. Only the just-revealed place animates in (prevReveal gates that),
-   and the champion's slot gets the big flourish. */
+/* The Final Jeopardy standings reveal (the "final-winner" view). S.finalReveal is
+   how many places are showing (0 = the "Tallying scores…" loader). Only the
+   revealed teams render, stacked bottom-up (last place lowest); the newest is the
+   top card and is flown in big from the centre by startWinnerHero(). Once every
+   place is shown the champion is enlarged and the rest recede (the "crowned"
+   class, added in renderDisplay). */
 function finalWinnerHtml() {
   const standings = finalStandings(S.teams);          // [{team, idx, rank, isTop}] high -> low
   const N = standings.length;
@@ -473,21 +500,36 @@ function finalWinnerHtml() {
   // resize as more appear. Every box is centre-justified and carries a green/red
   // Final Jeopardy delta.
   const shown = standings.slice(N - revealed);        // high -> low; first = newest = top of stack
-  const showPlayers = N <= 4;                          // drop the players line in a crowded field so cards fit
+  const showPlayers = N <= 5;                          // drop the players line in a full field so bands stay compact
   const cards = shown.map(s => {
     const champ = s.isTop;
     const d = finalDelta(s.idx);
     const dCls = d > 0 ? "up" : d < 0 ? "down" : "flat";
-    const dTxt = d > 0 ? "+" + money(d) : d < 0 ? money(d) : "no change";
+    const dTxt = d > 0 ? "+" + money(d) : d < 0 ? money(d) : "$0";
     const players = showPlayers && s.team.players && s.team.players.length
       ? `<div class="sc-players">${esc(s.team.players.join(" · "))}</div>` : "";
+    // Horizontal band: place + name on the left, then two big labelled numbers on
+    // the right (final score, and the Final Jeopardy result) so the metrics are
+    // large and readable.
     return `<div class="standing-card${champ ? " champ" : ""}">
-      ${champ ? `<div class="sc-champ-tag">CHAMPION</div>` : ""}
-      <div class="sc-place">${ordinal(s.rank)} place</div>
-      <div class="sc-name">${esc(s.team.name)}</div>
-      ${players}
-      <div class="sc-score${s.team.score < 0 ? " neg" : ""}">${money(s.team.score)}</div>
-      <div class="sc-delta ${dCls}"><span class="sc-delta-cap">Final Jeopardy </span>${dTxt}</div>
+      <div class="sc-rank">
+        <div class="sc-place">${ordinal(s.rank)}</div>
+      </div>
+      <div class="sc-id">
+        ${champ ? `<div class="sc-champ-tag">CHAMPION</div>` : ""}
+        <div class="sc-name">${esc(s.team.name)}</div>
+        ${players}
+      </div>
+      <div class="sc-metrics">
+        <div class="sc-metric">
+          <div class="sc-metric-label">Score</div>
+          <div class="sc-balance${s.team.score < 0 ? " neg" : ""}">${money(s.team.score)}</div>
+        </div>
+        <div class="sc-metric">
+          <div class="sc-metric-label">Final Jeopardy result</div>
+          <div class="sc-result ${dCls}">${dTxt}</div>
+        </div>
+      </div>
     </div>`;
   }).join("");
   const complete = revealed >= N;
@@ -539,11 +581,22 @@ function clueScreenHtml(catLabel, clue, answer, revealed, image, animate, replac
   const imgHtml = hasImg
     ? `<div class="clue-imgs${imgs.length > 1 ? " multi" : ""}"${imgsStyle}>${imgs.map(u => `<img class="clue-img" src="${esc(u)}" alt="" onload="fitClue()" onerror="imgFail(this)">`).join("")}</div>`
     : "";
-  return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""} ${hasImg ? "has-image" : ""}">
+  // Render pre-fitted when we've sized this exact clue before (kills the timer /
+  // score-edit re-render jolt). Keyed by the visible content so a different clue,
+  // reveal state, or hidden-question all get their own fit.
+  lastClueFitKey = [catLabel, hideQ ? "" : clue, revealed ? answer : "", hasImg ? "I" : ""].join("");
+  const cached = fitCache[lastClueFitKey] || {};
+  // "prefit": sized this exact clue before -> render those sizes and tell fitClue
+  // to TRUST them (skip re-shrinking), so a re-render of an unchanged clue
+  // reproduces what's on screen (no flash-then-shrink, no cumulative drift).
+  const prefit = cached.text != null || cached.answer != null;
+  const textSize = cached.text || size;
+  const ansSizeFit = cached.answer || ansSize;
+  return `<div class="clue-full"><div class="clue-inner ${revealed ? "revealed" : ""} ${hasImg ? "has-image" : ""}${prefit ? " prefit" : ""}">
     <div class="clue-cat">${esc(catLabel)}</div>
-    ${hideQ ? "" : `<div class="clue-text" style="font-size:${size}">${fmtText(clue)}</div>`}
+    ${hideQ ? "" : `<div class="clue-text" style="font-size:${textSize}">${fmtText(clue)}</div>`}
     ${imgHtml}
-    ${revealed ? `<div class="clue-answer ${animate ? "pop" : ""}" style="font-size:${ansSize}">${fmtText(answer)}</div>` : ""}
+    ${revealed ? `<div class="clue-answer ${animate ? "pop" : ""}" style="font-size:${ansSizeFit}">${fmtText(answer)}</div>` : ""}
   </div></div>`;
 }
 

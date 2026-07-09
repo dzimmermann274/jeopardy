@@ -19,8 +19,12 @@ if (IS_DISPLAY) {
   document.addEventListener("keydown", (e) => {
     if (e.key.toLowerCase() === "f") goFullscreen();
   });
-  document.addEventListener("fullscreenchange", renderDisplay);
-  document.addEventListener("webkitfullscreenchange", renderDisplay);
+  // A real viewport change (resize, or entering/leaving fullscreen) can invalidate
+  // the cached clue fit (it's viewport-relative), so drop it and re-fit fresh.
+  const onViewportChange = () => { clearFitCache(); renderDisplay(); };
+  document.addEventListener("fullscreenchange", onViewportChange);
+  document.addEventListener("webkitfullscreenchange", onViewportChange);
+  window.addEventListener("resize", onViewportChange);
   // Opened with "#display&fs=1" (a fullscreen deploy from the control panel):
   // enter true fullscreen automatically — on the first key/click, or with no
   // interaction at all if this site is allow-listed for automatic fullscreen.

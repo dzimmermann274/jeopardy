@@ -258,17 +258,21 @@ body.display.is-fullscreen .fs-prompt { display: none; }
   background: radial-gradient(circle, rgba(255,204,0,.10) 0%, rgba(255,204,0,0) 55%);
   animation: catGlow 6s ease-in-out infinite; }
 @keyframes catGlow { 0%,100% { transform: translate(-8%, -6%) scale(1); } 50% { transform: translate(28%, 22%) scale(1.15); } }
-/* persistent top banner so it's always clear the categories are cycling */
-.cat-intro-banner { position: relative; flex: 0 0 auto; text-align: center; font-family: Impact, "Arial Black", sans-serif;
-  text-transform: uppercase; letter-spacing: .32em; color: var(--value-gold); text-shadow: .05em .05em 0 #000;
-  font-size: 0; padding: 0; opacity: 0; transition: opacity .45s ease; }
+/* persistent top banner so it's always clear the categories are cycling. Absolute
+   (not in the flex flow) so the slot fills the whole screen and its card sits at
+   the true vertical centre — the banner floats over the top. */
+.cat-intro-banner { position: absolute; top: 0; left: 0; right: 0; z-index: 1; text-align: center;
+  font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase; letter-spacing: .32em;
+  color: var(--value-gold); text-shadow: .05em .05em 0 #000; font-size: 0; padding: 0; opacity: 0; transition: opacity .45s ease; }
 .cat-intro.show-banner .cat-intro-banner { font-size: 3.6vw; padding: 5vh 2vw 0; opacity: 1; }
 .cat-intro-slot { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; }
 .cat-intro-card { position: relative; text-align: center; max-width: 94vw; padding: 0 3vw;
   animation: catCard var(--dwell, 1750ms) cubic-bezier(.2,.75,.2,1) both; }
-.cat-intro-count { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
-  letter-spacing: .22em; color: var(--value-gold); font-size: 2.6vw; margin-bottom: 2.4vh;
-  text-shadow: .05em .05em 0 #000; }
+/* the "N of 6" count floats ABOVE the card (absolute, out of flow) so the big
+   category NAME is the card's only in-flow content and lands at the true centre. */
+.cat-intro-count { position: absolute; left: 0; right: 0; bottom: calc(100% + 1.4vh);
+  font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase;
+  letter-spacing: .22em; color: var(--value-gold); font-size: 2.6vw; text-shadow: .05em .05em 0 #000; }
 .cat-intro-name { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase; color: #fff;
   line-height: 1.03; text-shadow: .05em .05em 0 #000, 0 0 6vmin rgba(6,12,233,.95); -webkit-text-stroke: 2px #000; }
 @keyframes catCard {
@@ -318,27 +322,29 @@ body.display.is-fullscreen .fs-prompt { display: none; }
 .fj-instructions { margin-top: 4.5vh; font-family: Georgia, "Times New Roman", serif; color: #fff;
   font-size: min(2.7vw, 4.6vh); line-height: 1.5; max-width: 82vw; text-shadow: .04em .04em 0 #000; }
 .fj-getready { margin-top: 4vh; color: #cdd6ff; font-size: 2.4vw; letter-spacing: .2em; text-transform: uppercase; }
-.fj-intro-card.anim-cardin { animation: fjCardIn .8s cubic-bezier(.2,.8,.2,1) both; animation-delay: 2.05s; }
+.fj-intro-card.anim-cardin { animation: fjCardIn .8s cubic-bezier(.2,.8,.2,1) both; animation-delay: 1.95s; }
 @keyframes fjCardIn { 0% { opacity: 0; transform: translateY(5vh) scale(.85); filter: blur(6px); }
   100% { opacity: 1; transform: none; filter: blur(0); } }
+/* the FINAL JEOPARDY! card: a classic LINEAR fly into fullscreen — the whole card
+   grows from a point (scale 0) at a constant rate, holds, then flies off. */
 .fj-splash { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
   text-align: center; transform-origin: center center;
   background: radial-gradient(ellipse at center, #1a20f5 0%, var(--board-blue) 45%, #030661 100%);
-  animation: fjSplash 2.6s cubic-bezier(.2,.8,.2,1) both; }
+  animation: fjSplash 2.4s linear both; }
 .fj-splash span { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); font-size: 13vw;
   line-height: .95; letter-spacing: .02em; text-shadow: .06em .06em 0 #000, 0 0 7vmin rgba(255,204,0,.45);
   -webkit-text-stroke: 2px #000; }
 @keyframes fjSplash {
-  0%   { opacity: 0; transform: scale(.12); }
-  16%  { opacity: 1; transform: scale(1); }
-  70%  { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.14); }
+  0%   { opacity: 1; transform: scale(0); }
+  40%  { opacity: 1; transform: scale(1); }   /* linear grow to fullscreen (~0.95s) */
+  78%  { opacity: 1; transform: scale(1); }   /* hold */
+  100% { opacity: 0; transform: scale(1.06); } /* fly off, revealing the instructions */
 }
 
 /* ---- category: a huge "CATEGORY" flies in and holds ~3s, then shrinks & rises
    as the real category name effects in below it ---- */
-.fj-cat-word { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); font-size: 3.4vw;
-  letter-spacing: .24em; text-shadow: .05em .05em 0 #000; }
+.fj-cat-word { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); font-size: 3.2vw;
+  letter-spacing: .1em; text-shadow: .05em .05em 0 #000; }
 .fj-cat-name { margin-top: 3vh; font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase; color: #fff;
   font-size: 7.4vw; line-height: 1.04; max-width: 92vw; text-shadow: .05em .05em 0 #000, 0 0 8vmin rgba(6,12,233,.95);
   -webkit-text-stroke: 2px #000; }
@@ -350,9 +356,9 @@ body.display.is-fullscreen .fs-prompt { display: none; }
   100% { opacity: 1; transform: none; filter: blur(0); } }
 .fj-cat-big { position: absolute; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center;
   text-align: center; pointer-events: none; }
-.fj-cat-big span { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); font-size: 11vw;
-  letter-spacing: .06em; text-shadow: .06em .06em 0 #000, 0 0 7vmin rgba(255,204,0,.4); -webkit-text-stroke: 2px #000;
-  transform-origin: center center; animation: fjCatBig 3.8s cubic-bezier(.2,.8,.2,1) both; }
+.fj-cat-big span { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); font-size: 8.6vw;
+  line-height: 1.02; letter-spacing: .04em; text-shadow: .06em .06em 0 #000, 0 0 7vmin rgba(255,204,0,.4);
+  -webkit-text-stroke: 2px #000; transform-origin: center center; animation: fjCatBig 3.8s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes fjCatBig {
   0%   { opacity: 0; transform: scale(.16); }
   10%  { opacity: 1; transform: scale(1); }
@@ -395,35 +401,47 @@ body.display.is-fullscreen .fs-prompt { display: none; }
 .standings-list { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; width: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
   gap: min(1.2vh, calc(4.5vh / var(--nrows, 3))); }
-.standing-card { width: min(58vw, 840px); text-align: center; background: var(--board-blue);
-  border: .35vmin solid #000; border-radius: 1.5vmin; box-shadow: 0 .5vmin 2.4vmin rgba(0,0,0,.4);
-  padding: min(1.3vh, calc(5vh / var(--nrows, 3))) 2.4vw; }
-.sc-place { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); letter-spacing: .12em;
-  text-transform: uppercase; text-shadow: .05em .05em 0 #000; font-size: min(1.8vw, calc(8vh / var(--nrows, 3))); }
-.sc-name { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase; color: #fff; line-height: 1.04;
-  margin-top: .25vh; text-shadow: .05em .05em 0 #000; font-size: min(3.4vw, calc(17vh / var(--nrows, 3)));
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.sc-players { color: #c7d0ff; margin-top: .2vh; font-size: min(1.4vw, calc(7vh / var(--nrows, 3)));
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sc-score { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); margin-top: .25vh;
-  text-shadow: .05em .05em 0 #000; font-size: min(3vw, calc(14vh / var(--nrows, 3))); }
-.sc-score.neg { color: #ff7070; }
-.sc-delta { margin-top: .35vh; font-weight: 800; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
-  font-size: min(1.6vw, calc(7vh / var(--nrows, 3))); }
-.sc-delta .sc-delta-cap { font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #aab3d6;
-  font-size: .72em; }
-.sc-delta.up { color: #57e08a; }
-.sc-delta.down { color: #ff7d7d; }
-.sc-delta.flat { color: #9aa1b9; }
+/* horizontal band: [place] [name/players] ......... [SCORE] [FINAL JEOPARDY RESULT]
+   so both numbers are big and readable. transition drives the "crowned" emphasis. */
+.standing-card { display: flex; align-items: center; gap: 2vw; width: min(74vw, 1220px);
+  background: var(--board-blue); border: .35vmin solid #000; border-radius: 1.5vmin;
+  box-shadow: 0 .5vmin 2.4vmin rgba(0,0,0,.4); padding: min(1.6vh, calc(7.5vh / var(--nrows, 3))) 2.2vw;
+  transition: transform .55s ease, opacity .55s ease; }
+.sc-rank { flex: 0 0 auto; width: 9vw; text-align: center; }
+.sc-place { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); letter-spacing: .02em;
+  line-height: 1; text-transform: uppercase; text-shadow: .05em .05em 0 #000; font-size: min(3vw, calc(15vh / var(--nrows, 3))); }
+.sc-id { flex: 1 1 auto; min-width: 0; text-align: left; }
+.sc-name { font-family: Impact, "Arial Black", sans-serif; text-transform: uppercase; color: #fff; line-height: 1.02;
+  text-shadow: .05em .05em 0 #000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: min(3.4vw, calc(16.5vh / var(--nrows, 3))); }
+.sc-players { color: #c7d0ff; margin-top: .3vh; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: min(1.4vw, calc(6.5vh / var(--nrows, 3))); }
+.sc-metrics { flex: 0 0 auto; display: flex; gap: 2.2vw; }
+.sc-metric { text-align: right; min-width: 11.5vw; }
+.sc-metric-label { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #aeb7da; white-space: nowrap;
+  font-size: min(1.15vw, calc(5.2vh / var(--nrows, 3))); margin-bottom: .3vh; }
+.sc-balance { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); line-height: 1;
+  text-shadow: .05em .05em 0 #000; font-size: min(4.4vw, calc(22vh / var(--nrows, 3))); }
+.sc-balance.neg { color: #ff7070; }
+.sc-result { font-family: Impact, "Arial Black", sans-serif; line-height: 1; text-shadow: .05em .05em 0 #000;
+  font-size: min(4.4vw, calc(22vh / var(--nrows, 3))); }
+.sc-result.up { color: #57e08a; }
+.sc-result.down { color: #ff7d7d; }
+.sc-result.flat { color: #c7d0ff; }
 .sc-champ-tag { display: inline-block; font-family: Impact, "Arial Black", sans-serif; color: #111;
-  background: var(--value-gold); padding: .2vh 1.1vw; border-radius: .6vmin; letter-spacing: .2em;
-  font-size: min(1.5vw, calc(7vh / var(--nrows, 3))); margin-bottom: .3vh; }
-/* champion card — gold, glowing, a touch larger (still budgeted into the fit) */
+  background: var(--value-gold); padding: .3vh 1.1vw; border-radius: .7vmin; letter-spacing: .16em; line-height: 1;
+  margin-bottom: .5vh; box-shadow: 0 0 2.6vmin rgba(255,204,0,.75); font-size: min(1.8vw, calc(8vh / var(--nrows, 3))); }
+/* champion card — gold, glowing, larger metrics */
 .standing-card.champ { background: linear-gradient(120deg, #2a2fff 0%, var(--board-blue) 100%);
   border-color: var(--value-gold); box-shadow: 0 0 5vmin rgba(255,204,0,.6); }
-.standing-card.champ .sc-name { text-shadow: .05em .05em 0 #000, 0 0 4vmin rgba(255,204,0,.6);
-  font-size: min(4.2vw, calc(21vh / var(--nrows, 3))); }
-.standing-card.champ .sc-score { font-size: min(3.6vw, calc(17vh / var(--nrows, 3))); }
+/* champion name keeps the normal size (the crowned scale + gold + badge carry the
+   emphasis) so long names aren't squeezed out; the metrics get a modest bump. */
+.standing-card.champ .sc-name { text-shadow: .05em .05em 0 #000, 0 0 4vmin rgba(255,204,0,.6); }
+.standing-card.champ .sc-balance, .standing-card.champ .sc-result { font-size: min(4.8vw, calc(23vh / var(--nrows, 3))); }
+.standing-card.champ .sc-metric { min-width: 13vw; }
+/* winner crowned (all places shown): enlarge the champion, recede the rest */
+.fj-standings.crowned .standing-card:not(.champ) { transform: scale(.93); opacity: .82; }
+.fj-standings.crowned .standing-card.champ { transform: scale(1.08); }
 /* while a card is flying in big from the centre (JS toggles .hero-fly) */
 .standing-card.hero-fly { box-shadow: 0 1.5vmin 7vmin rgba(0,0,0,.55), 0 0 6vmin rgba(255,204,0,.35); }
 .standing-card.champ.hero-fly { box-shadow: 0 1.5vmin 7vmin rgba(0,0,0,.55), 0 0 9vmin rgba(255,204,0,.75); }
