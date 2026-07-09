@@ -593,7 +593,7 @@ function renderSetup() {
   const bResume = document.getElementById("btnResume");
   if (bResume) bResume.onclick = () => {
     const sg = loadSavedGame();
-    if (sg) { sg.stage = "game"; update(() => { S = sg; }); }   // resume showing the game, never a leftover curtain
+    if (sg) { sg.stage = "game"; sg.finalPrep = false; update(() => { S = sg; }); }   // resume showing the game, never a leftover curtain or stray prep screen
   };
   const bDiscard = document.getElementById("btnDiscardSave");
   if (bDiscard) bDiscard.onclick = () => { clearSavedGame(); renderControl(); };
@@ -769,12 +769,14 @@ function renderPlay() {
   };
   const fj = document.getElementById("btnFinal");
   if (fj) fj.onclick = () => {
+    update(() => { S.finalPrep = true; });   // flash "Ready for Final Jeopardy" on the Host View while we confirm
     customConfirm("Start Final Jeopardy? The instructions will appear on the TV, and the board is left behind.",
       { okText: "Start Final Jeopardy" }).then(ok => {
-      if (!ok) return;
+      if (!ok) { update(() => { S.finalPrep = false; }); return; }   // cancelled — drop the host "ready" screen
       liveAnswerDraft = "";
       finalWagerDrafts = null;
       update(() => {
+        S.finalPrep = false;
         // If a PRIOR Final Jeopardy was already scored (host is re-running it),
         // un-bank those awards first — otherwise the fresh scoring pass, which
         // sees every team as unscored again, would double-count the wagers.

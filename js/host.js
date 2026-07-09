@@ -110,6 +110,7 @@ try {
    screens — that's when a note may fill the screen. */
 function mainIsIdle() {
   if (!S || S.phase === "setup") return true;
+  if (S.finalPrep) return false;   // the "Ready for Final Jeopardy" screen is content, not idle
   return S.view === "welcome" || S.view === "board";
 }
 
@@ -121,6 +122,8 @@ function render() {
 
 function contentHtml() {
   if (!S) return idleHtml("Connecting…", "Waiting to hear from the control panel — keep this tab open.");
+  // The control panel is asking "Start Final Jeopardy?" — flash a big heads-up.
+  if (S.finalPrep) return finalReadyHtml();
   const title = (S.game && S.game.title) || "Jeopardy";
   if (S.phase === "setup") {
     return idleHtml(title, S.game ? "Game loaded — waiting for the host to start." : "Waiting for the game to be set up.");
@@ -132,8 +135,8 @@ function contentHtml() {
     case "winner":        return winnerHtml();
     case "final-winner":  return finalWinnerHtml();
     case "final-intro":
-    case "final-category": return finalPrepHtml(S.view);
-    case "final-clue":    return finalClueHtml();
+    case "final-category":
+    case "final-clue":    return finalSimpleHtml();   // plain, at-a-glance category/question/answer
     case "clue":
     case "dd":            return clueHtml();
     default:              return idleHtml(title, "");
@@ -177,20 +180,31 @@ function clueHtml() {
   return qaHtml({ label, tag: cl.dd ? "DAILY DOUBLE" : "", question: cl.clue, answer: cl.answer, unknown: cl.unknown, revealed: !!S.revealed });
 }
 
-function finalClueHtml() {
-  const f = S.game && S.game.final;
-  if (!f) return idleHtml("Final Jeopardy", "Waiting…");
-  return qaHtml({ label: f.category, tag: "FINAL JEOPARDY", question: f.clue, answer: f.answer, unknown: f.unknown, revealed: !!S.finalRevealed });
+/* The control panel is confirming "Start Final Jeopardy?" — a full-screen
+   heads-up so the host knows it's about to begin. */
+function finalReadyHtml() {
+  return `<div class="final-ready">
+    <div class="fr-kicker">Get ready</div>
+    <div class="fr-title">Ready for<br>Final Jeopardy!</div>
+  </div>`;
 }
 
-/* During the Final intro / category reveal, show the clue and answer ahead of
-   time so the host can prepare to judge (this screen is private to the host). */
-function finalPrepHtml(view) {
+/* The whole Final Jeopardy stretch (intro, category, clue) on the Host View:
+   deliberately plain — Category / Question / Answer, big and readable, no styling
+   beyond gold-while-secret / green-once-revealed on the answer. */
+function finalSimpleHtml() {
   const f = S.game && S.game.final;
   if (!f) return idleHtml("Final Jeopardy", "Getting ready…");
-  const where = view === "final-intro" ? "Instructions are on the TV" : "Category is on the TV";
-  return `<div class="prep-banner">Coming up — Final Jeopardy · ${esc(where)}</div>` +
-    qaHtml({ label: f.category, tag: "FINAL JEOPARDY · PREP", question: f.clue, answer: f.answer, unknown: f.unknown, revealed: !!S.finalRevealed });
+  const revealed = !!S.finalRevealed;
+  const answer = f.answer
+    ? `<span class="fs-answer ${revealed ? "revealed" : "secret"}">${fmtText(f.answer)}</span>`
+    : `<span class="fs-answer muted">${f.unknown ? "No preset answer — Danny types it in live." : "(no answer in the sheet)"}</span>`;
+  return `<div class="final-simple">
+    <div class="fs-banner">Final Jeopardy</div>
+    <div class="fs-row"><span class="fs-label">Category:</span> <span class="fs-val">${fmtText(f.category)}</span></div>
+    <div class="fs-row"><span class="fs-label">Question:</span> <span class="fs-val">${fmtText(f.clue)}</span></div>
+    <div class="fs-row"><span class="fs-label">Answer:</span> ${answer}</div>
+  </div>`;
 }
 
 function scoresHtml(title) {

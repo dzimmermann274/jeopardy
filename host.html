@@ -152,19 +152,24 @@
   .qa-status.on { color: var(--green); }
   .qa-status.off { color: var(--muted); }
 
-  .prep-banner {
-    text-align: center;
-    font-size: clamp(14px, 1.8vw, 20px);
-    font-weight: 700;
-    letter-spacing: .04em;
-    color: var(--gold);
-    border: 1px solid var(--panel-border);
-    background: var(--panel);
-    border-radius: 999px;
-    padding: 8px 16px;
-    margin: 0 auto 22px;
-    width: fit-content;
+  /* ---- Final Jeopardy: deliberately plain, at-a-glance ---- */
+  .final-ready { width: 100%; text-align: center; }
+  .fr-kicker { font-size: clamp(15px, 2.2vw, 26px); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .fr-title { font-size: clamp(44px, 9vw, 122px); font-weight: 900; line-height: 1.04; color: var(--gold); text-shadow: 0 3px 0 rgba(0,0,0,.25); }
+
+  .final-simple { width: 100%; }
+  .fs-banner {
+    font-size: clamp(16px, 2.2vw, 26px); font-weight: 800; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--gold); margin-bottom: clamp(16px, 3.5vh, 34px);
   }
+  .fs-row { font-size: clamp(21px, 3vw, 42px); line-height: 1.3; margin-bottom: clamp(14px, 2.8vh, 30px); }
+  .fs-row:last-child { margin-bottom: 0; }
+  .fs-label { font-weight: 800; color: var(--muted); margin-right: .35em; }
+  .fs-val { font-weight: 600; color: var(--ink); }
+  .fs-answer { font-weight: 800; }
+  .fs-answer.secret { color: var(--gold); }
+  .fs-answer.revealed { color: var(--green); }
+  .fs-answer.muted { color: var(--muted); font-style: italic; font-weight: 600; }
 
   /* ---- scores / winner ---- */
   .scores { text-align: center; width: 100%; }
@@ -289,6 +294,6 @@
   <div id="host-content"></div>
   <div id="host-note" class="host-note" hidden></div>
   <!-- bump ?v= on every deploy so browsers never run stale cached JS -->
-  <script src="js/host.js?v=36"></script>
+  <script src="js/host.js?v=37"></script>
 </body>
 </html>
