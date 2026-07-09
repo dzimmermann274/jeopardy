@@ -179,7 +179,7 @@ function renderDisplay() {
         const idx = clueIndexAt(r.categories[c], row.value, row.occ);
         const clue = idx === -1 ? null : r.categories[c].clues[idx];
         cells += clue
-          ? `<div class="b-tile ${clue.used ? "used" : ""}" data-cat="${c}" data-row="${idx}">$${clue.value}</div>`
+          ? `<div class="b-tile ${clue.used ? "used" : ""}" data-cat="${c}" data-row="${idx}"><span class="b-val">$${clue.value}</span></div>`
           : `<div class="b-tile used"></div>`;
       }
     }
@@ -213,6 +213,7 @@ function renderDisplay() {
   document.getElementById("btnFS").onclick = goFullscreen;
   runTimerBar();
   renderCurtain();
+  applyBoardPending();                 // keep tiles hidden if a board rebuild lands mid-intro (no-op otherwise)
   lastRenderedView = S.view;
   lastFinalReveal = (S.view === "final-winner") ? (S.finalReveal || 0) : 0;
   fitClue();                          // immediate best-effort (sizes text at full screen)
@@ -366,10 +367,73 @@ function setCurtainLayer(elem, target, instant) {
    order) for ~1.75s apiece with a slide/scale/blur reveal, then fades to the
    board. Self-contained on the display; nothing further is broadcast. */
 let introTimer = null;
-function playCategoryIntro() {
+
+/* ---------------- one-time board "populate" reveal ----------------
+   After the category intro dissolves on the game's FIRST reveal, the board's
+   tiles don't just appear — they fill in a few random groups at a time, like the
+   real Jeopardy board reveal, with a short arcade blip (played by the control
+   panel) as each group lands. Self-contained on the display, and only ever armed
+   when the control panel sends play-intro with reveal:true (its own once-per-game
+   guard), so there's no redo. */
+let boardRevealPhase = null;        // null | "pending" (tiles hidden under the intro) | "running"
+let boardRevealTimers = [];
+function cancelBoardReveal() {
+  boardRevealTimers.forEach(clearTimeout); boardRevealTimers = [];
+  boardRevealPhase = null;
+  const b = document.querySelector(".board.is-revealing");
+  if (b) {
+    b.classList.remove("is-revealing");
+    b.querySelectorAll(".tile-pending").forEach(t => t.classList.remove("tile-pending"));
+  }
+}
+/* Hide every board tile (dim the rectangle, hide its value) so the board sitting
+   under the opaque intro shows only its category headers. Re-applied by
+   renderDisplay if the board is rebuilt mid-intro, so the tiles never flash in. */
+function applyBoardPending() {
+  if (boardRevealPhase !== "pending") return;
+  const board = document.querySelector(".board");
+  if (!board) return;
+  const tiles = board.querySelectorAll(".b-tile");
+  if (!tiles.length) return;
+  board.classList.add("is-revealing");
+  tiles.forEach(t => t.classList.add("tile-pending"));
+}
+/* Fill the board in a few random groups, one after another, blipping per group. */
+function runBoardReveal() {
+  const board = document.querySelector(".board");
+  const tiles = board ? [...board.querySelectorAll(".b-tile.tile-pending")] : [];
+  if (!tiles.length) { cancelBoardReveal(); return; }
+  boardRevealPhase = "running";
+  const GROUPS = Math.min(4, tiles.length);
+  // Randomly assign each tile to a group so the board fills in a scattered,
+  // arcade-like order (not row by row); then make sure no group ends up empty.
+  const groups = Array.from({ length: GROUPS }, () => []);
+  tiles.forEach(t => groups[Math.floor(Math.random() * GROUPS)].push(t));
+  for (let g = 0; g < GROUPS; g++) {
+    while (!groups[g].length) {                       // borrow one from the biggest group
+      let big = 0;
+      for (let k = 0; k < GROUPS; k++) if (groups[k].length > groups[big].length) big = k;
+      groups[g].push(groups[big].pop());
+    }
+  }
+  const LEAD = 160, GAP = 620, STAGGER = 45;
+  let clock = LEAD;
+  groups.forEach((grp, g) => {
+    boardRevealTimers.push(setTimeout(() => {
+      CHANNEL.postMessage({ type: "board-beep", step: g, total: GROUPS });   // control panel plays the blip
+      grp.forEach((t, i) => boardRevealTimers.push(
+        setTimeout(() => t.classList.remove("tile-pending"), i * STAGGER)));  // a quick cascade within the group
+    }, clock));
+    clock += GAP;
+  });
+  boardRevealTimers.push(setTimeout(cancelBoardReveal, clock + 500));   // settle: back to a plain static board
+}
+
+function playCategoryIntro(withReveal) {
   const r = currentRound();
   if (!r || !r.categories || !r.categories.length) return;
   if (introTimer) { clearTimeout(introTimer); introTimer = null; }
+  cancelBoardReveal();                                   // drop any prior/interrupted reveal
   const old = document.getElementById("catIntro"); if (old) old.remove();
 
   const cats = r.categories.map(c => c.name);
@@ -381,13 +445,20 @@ function playCategoryIntro() {
   document.body.appendChild(ov);
   const slot = ov.querySelector(".cat-intro-slot");
 
+  // First reveal of the game: hide the board tiles now, while the opaque intro
+  // covers them, so they can populate group-by-group once it dissolves.
+  if (withReveal) { boardRevealPhase = "pending"; applyBoardPending(); }
+
   const TITLE_MS = 3000, CAT_MS = 2000, OUT_MS = 700;
   const steps = [{ kind: "title" }].concat(cats.map((name, i) => ({ kind: "cat", name, idx: i + 1, total: cats.length })));
   let i = 0;
   const step = () => {
     if (i >= steps.length) {                         // done — fade the overlay off, revealing the board
       ov.classList.add("cat-intro-out");
-      introTimer = setTimeout(() => { ov.remove(); introTimer = null; }, OUT_MS);
+      introTimer = setTimeout(() => {
+        ov.remove(); introTimer = null;
+        if (boardRevealPhase === "pending") runBoardReveal();   // ...then populate the board, group by group
+      }, OUT_MS);
       return;
     }
     const s = steps[i]; i++;

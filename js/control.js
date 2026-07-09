@@ -22,12 +22,22 @@ let liveAnswerOpen = false;               // keep the override <details> open ac
 let categoriesShown = false;              // the category intro has played this game (resets on reload / new game)
 let hostNoteDraft = "";                   // "Note from Danny" being typed (survives re-renders like the other drafts)
 
-/* Fire the full-screen category reveal on the display, and grey the button. */
+/* Fire the full-screen category reveal on the display, and grey the button.
+   Also auto-engages the "Show the game" failsafe so the board is already waiting
+   under the (opaque) intro — when the categories dissolve off, the game is right
+   there, ready to play. On the game's FIRST reveal it additionally kicks off a
+   one-time board-populate animation on the TV (tiles filling in a few random
+   groups at a time, with a little arcade blip per group); replays skip that. */
 function showCategories() {
   collectTeamNames();
+  const firstReveal = !categoriesShown;    // the board-populate animation plays once per game
   categoriesShown = true;
-  CHANNEL.postMessage({ type: "play-intro" });   // transient — not part of saved state
-  renderControl();
+  primeRevealAudio();                       // unlock the AudioContext inside this click gesture
+  // Order matters: the opaque intro overlay goes up FIRST (transient, not saved
+  // state), then we lift any curtain to "game" behind it — so the board (re)renders
+  // hidden under the overlay and never flashes into view before the reveal.
+  CHANNEL.postMessage({ type: "play-intro", reveal: firstReveal });
+  update(() => { S.stage = "game"; });      // auto "Show the game": the board waits, ready, under the intro
 }
 
 /* Push a "Note from Danny" to the passive Host View (host.html). Stored in S so
@@ -216,6 +226,19 @@ function deployMain() {
   if (screensOv) renderScreensDialog();
 }
 
+/* Full screen on THIS computer's screen (no external display, no Window
+   Management permission). Opens the display and arms one-click full screen: a
+   browser can't go full screen with zero interaction, so the new window shows a
+   "click for full screen" prompt and the first click/key there fills the screen.
+   Same-machine fills are the reliable path — this is what to reach for when the
+   external-screen auto-fullscreen won't fire (it needs an enterprise allow-list). */
+function deployMainFull() {
+  collectTeamNames();
+  update(() => { S.stage = "game"; });
+  openDisplayWindow(undefined, true);   // wantFs -> #display&fs=1 -> the new window arms one-click full screen
+  if (screensOv) renderScreensDialog();
+}
+
 /* Split view on the one laptop screen: put the display on the right half.
    (Browsers won't let a script move the control/main tab, so the host keeps
    the control panel on the left.) */
@@ -299,11 +322,13 @@ function renderScreensDialog() {
 
   const mainHtml = `
     <div class="screens-section">
-      <div class="sec-title">Main screen (this laptop)</div>
+      <div class="sec-title">Main screen (this computer)</div>
       <div class="screens-btns">
+        <button class="btn primary" data-act="main-full">Deploy full screen on this screen</button>
         <button class="btn" data-act="main-normal">Deploy on the main screen (normal window)</button>
         <button class="btn" data-act="main-split">Split: control panel + display side by side</button>
       </div>
+      <p class="screens-note">Use <b>full screen on this screen</b> when the board is on this computer's own display (or a TV plugged into it) — no second screen or “manage windows” permission needed. A browser can't go full screen by itself, so the display window shows a big <b>“click for full screen”</b> prompt: one click (or any key press) inside that window fills the screen.</p>
     </div>`;
 
   const failHtml = `
@@ -350,6 +375,7 @@ function onScreensAct(act) {
     case "ext-black":  deployExternal({ fullscreen: true,  stage: "black" }); break;
     case "ext-full":   deployExternal({ fullscreen: true,  stage: "game"  }); break;
     case "ext-normal": deployExternal({ fullscreen: false, stage: "game"  }); break;
+    case "main-full":   deployMainFull(); break;
     case "main-normal": deployMain(); break;
     case "main-split":  deploySplitMain(); break;
     case "fade-title": setStage("title"); break;
@@ -531,6 +557,29 @@ function playFinalSting(champion) {
       fjTone(ctx, 587.33, 0.085, 0.26, 0.16, "triangle");
     }
   } catch (e) { /* audio not allowed / unsupported — reveal is still fully visual */ }
+}
+
+/* Unlock (resume) the shared AudioContext from WITHIN a click gesture, so the
+   board-reveal blips — which fire a couple of seconds later, off a display
+   message — are already allowed to sound. Called on the Show Categories click. */
+function primeRevealAudio() {
+  const ctx = fjCtx(); if (!ctx) return;
+  try { if (ctx.state === "suspended") ctx.resume(); } catch (e) {}
+}
+
+/* One short arcade "blip" per tile group during the one-time board-populate
+   reveal. Played from the control window like the other sounds (the display posts
+   a "board-beep" as each group fills in). Quiet on purpose; the pitch steps up a
+   little each group for a satisfying ascending run. */
+function playBoardBeep(step, total) {
+  const ctx = fjCtx(); if (!ctx) return;
+  try {
+    if (ctx.state === "suspended") ctx.resume();
+    const scale = [523.25, 587.33, 659.25, 783.99];      // C5 D5 E5 G5 — ascends group to group
+    const f = scale[Math.min(Math.max(step | 0, 0), scale.length - 1)];
+    fjTone(ctx, f, 0, 0.11, 0.11, "square");             // the blip
+    fjTone(ctx, f * 2, 0.006, 0.05, 0.04, "square");     // a touch of sparkle on top
+  } catch (e) { /* audio not allowed / unsupported — the populate is still fully visual */ }
 }
 
 function renderControl() {
