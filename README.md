@@ -111,6 +111,24 @@ forward one step at a time from the control panel:
 The existing **Announce winner** and **Show scores on TV** buttons are unchanged and stay
 independent of this sequence.
 
+**Host view** — a separate, read-only screen for whoever reads the questions and judges
+answers. Open it on the host's Mac or iPad (the **🧑‍🏫 Host view** card on the control
+panel has an **Open host view** button, or bookmark the game's address with `host.html` on
+the end). It **never touches the game** — it just mirrors it, showing:
+
+- the **current question** in big, plain text, easy to read at a glance;
+- the **answer — even before it's revealed on the TV** — so the host can tell whether a
+  team is right and judge on the spot (for an UNKNOWN clue it shows once Danny types it);
+- the **30-second timer** in a corner, as plain numerals, appearing only while it runs;
+- during the **winner reveal**, a heads-up of **which team is announced next and their
+  score** (matching the control panel's last-place-to-first order);
+- **notes from Danny** — from the same card, the control-panel operator can push a note
+  that pops onto the host screen. It sits out of the way of a question/answer and fills the
+  screen when nothing else is showing.
+
+The Host view is a passive listener on the same window-sync channel, so any number can be
+open and none of them can affect the TV or the control panel.
+
 If the browser reloads mid-game, reopen the link: the setup screen offers **Resume that
 game** with scores and board progress intact.
 
@@ -125,6 +143,7 @@ Plain HTML/CSS/JS, no build step, no backend. Deployed as-is on GitHub Pages.
 | File | Responsibility |
 |------|----------------|
 | `index.html` | Shell; loads everything. Same page is both apps: plain = control panel, `#display` = TV view. |
+| `host.html` | The **Host view** page — a standalone, read-only companion screen (host's Mac/iPad). Loads only `js/host.js`; its styles are inline. |
 | `styles.css` | All styles. Control-panel styles under `body.control`, TV styles under `body.display`. |
 | `js/core.js` | Shared state object `S`, BroadcastChannel sync, localStorage save/resume, helpers. |
 | `js/data.js` | Google Sheets fetch (whole-workbook xlsx export; CSV fallbacks), workbook parser (tab-per-category), legacy row-list parser. |
@@ -132,6 +151,7 @@ Plain HTML/CSS/JS, no build step, no backend. Deployed as-is on GitHub Pages.
 | `js/display.js` | The entire TV rendering (board, clue, Daily Double, Final, scores, timer) and the fade **curtain** overlay driven by `S.stage` (`game`/`black`/`title`). |
 | `js/sample-game.js` | The built-in demo game. |
 | `js/main.js` | Boot: decides which mode this window is. |
+| `js/host.js` | The Host view logic: a passive BroadcastChannel listener that renders the current question, the answer (shown to the host before it's revealed on the TV), the timer, the winner-reveal heads-up, and "notes from Danny". Never mutates state. |
 | `js/vendor/xlsx.full.min.js` | SheetJS (reads the workbook in the browser). |
 | `tools/make_template.py` | Generates `template/Jeopardy Questions.xlsx` (openpyxl). The parser and this template are a matched pair — change them together. |
 
@@ -142,7 +162,13 @@ Design rules to preserve when adding features:
   mutates game state. New features should follow the same pattern: mutate inside
   `update(() => {...})`, render from `S`.
 - **Host-blind guarantee:** nothing in `control.js` may render an answer unless
-  `S.revealed` / `S.finalRevealed` is already true.
+  `S.revealed` / `S.finalRevealed` is already true. (The **Host view**, `host.html`, is the
+  deliberate exception — a private screen for the person judging, so it *does* show the
+  answer early; it is never the control panel or the TV.)
+- **The Host view is passive:** `host.html` / `js/host.js` only READ `{type:"state"}`
+  broadcasts (plus a read-only `host-hello` snapshot request). They must never send the
+  display/control handshake messages or mutate `S`, or they'd be mistaken for a TV or a
+  second control panel and fight over the game. It loads none of the game's other scripts.
 - **The game mirrors the sheet**, never the other way around: the sheet's tabs, filled
   rows, teams, and title decide what exists in the game.
 - **Re-render safety:** the panel re-renders `innerHTML` on every update, so any

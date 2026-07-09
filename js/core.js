@@ -37,6 +37,8 @@ function freshState() {
                              //   "game"  = show the live game (no curtain)
                              //   "black" = fade the TV to solid black
                              //   "title" = fade the TV to the title screen
+    hostNote: { text: "", ts: 0 },  // "Note from Danny" pushed to the passive Host View
+                             //   (host.html). Never rendered on the TV; the display ignores it.
   };
 }
 let S = freshState();
@@ -109,6 +111,10 @@ CHANNEL.onmessage = (ev) => {
     else if (msg.type === "play-intro") { playCategoryIntro(); }   // full-screen category reveal
   } else {
     if (msg.type === "hello") { CHANNEL.postMessage({ type: "state", state: snapshot() }); noteDisplaySeen(); }
+    // The passive Host View (host.html) requests the current state on open. Reply
+    // with a snapshot but do NOT mark a display beat — the Host View is not a TV,
+    // and must never be mistaken for one or for a second control panel.
+    else if (msg.type === "host-hello") { CHANNEL.postMessage({ type: "state", state: snapshot() }); }
     else if (msg.type === "display-alive") { noteDisplaySeen(); }
     else if (msg.type === "control-hello") { CHANNEL.postMessage({ type: "control-active" }); }
     else if (msg.type === "control-active") {
