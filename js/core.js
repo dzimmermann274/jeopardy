@@ -8,7 +8,10 @@
    ============================================================ */
 
 const IS_DISPLAY = location.hash.startsWith("#display");
-const CHANNEL = new BroadcastChannel("ppi-jeopardy-v1");
+// Message bus (js/bus.js): BroadcastChannel for same-machine windows, plus an
+// optional LAN relay when the page is served by server.py, so the control panel /
+// TV / Host View can be on separate devices. Drop-in for BroadcastChannel.
+const CHANNEL = createBus("ppi-jeopardy-v1");
 const SAVE_KEY = "ppi-jeopardy-state-v1";
 const app = document.getElementById("app");
 

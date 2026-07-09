@@ -13,8 +13,12 @@ if (IS_DISPLAY) {
   const stageMatch = location.hash.match(/[?&]stage=([a-z]+)/);
   if (stageMatch) S.stage = stageMatch[1];
   renderDisplay();
-  CHANNEL.postMessage({ type: "hello" });          // ask the control window for current state
-  CHANNEL.postMessage({ type: "display-alive" });  // announce presence right away
+  const displayHello = () => {
+    CHANNEL.postMessage({ type: "hello" });          // ask the control window for current state
+    CHANNEL.postMessage({ type: "display-alive" });  // announce presence right away
+  };
+  displayHello();
+  CHANNEL.onnetopen = displayHello;                  // re-announce when the LAN relay (re)connects
   setInterval(() => CHANNEL.postMessage({ type: "display-alive" }), 1000);  // heartbeat: the control trusts a recent beat
   document.addEventListener("keydown", (e) => {
     if (e.key.toLowerCase() === "f") goFullscreen();
@@ -35,8 +39,21 @@ if (IS_DISPLAY) {
   renderControl();   // if a saved game exists, the setup screen offers to resume it
   // Check for another open control tab before claiming the display: broadcast
   // hello, and only push our state if nobody objects within half a second.
-  CHANNEL.postMessage({ type: "control-hello" });
-  CHANNEL.postMessage({ type: "ping-display" });   // ask any already-open display to announce itself (survives a reload)
+  const controlHello = () => {
+    CHANNEL.postMessage({ type: "control-hello" });
+    CHANNEL.postMessage({ type: "ping-display" });  // ask any already-open display to announce itself (survives a reload)
+    if (S.phase === "play") send();                 // push current state to devices that connected first
+  };
+  controlHello();
+  // When the LAN relay (re)connects, re-do the handshake so devices on other
+  // machines sync, and refresh the control panel so its network status shows.
+  CHANNEL.onnetopen = controlHello;
+  CHANNEL.onnetchange = () => {
+    const el = document.activeElement;
+    if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;   // don't yank focus mid-typing
+    collectTeamNames();
+    renderControl();
+  };
   setTimeout(() => { if (!otherControlDetected) send(); }, 500);
   window.addEventListener("beforeunload", () => { save(); });
   setInterval(refreshDisplayOpenState, 1000);      // flip the "display open?" UI if the display closes elsewhere

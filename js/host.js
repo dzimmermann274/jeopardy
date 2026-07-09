@@ -24,7 +24,7 @@
    never be mistaken for a TV or a second control panel.
    ============================================================ */
 
-const CHANNEL = new BroadcastChannel("ppi-jeopardy-v1");
+const CHANNEL = createBus("ppi-jeopardy-v1");   // js/bus.js: BroadcastChannel + optional LAN relay
 const SAVE_KEY = "ppi-jeopardy-state-v1";
 const MODE_KEY = "ppi-jeopardy-host-mode";
 let S = null;            // latest received game state (null until we hear anything)
@@ -110,6 +110,9 @@ CHANNEL.onmessage = (ev) => {
    Host View was opened before the control panel — and re-ask on refocus so a
    backgrounded tab catches up instantly. */
 function askForState() { try { CHANNEL.postMessage({ type: "host-hello" }); } catch (e) {} }
+// When the LAN relay (re)connects, re-ask so a Host View on another device
+// immediately gets the current snapshot from the control panel.
+CHANNEL.onnetopen = askForState;
 let helloTries = 0;
 const helloTimer = setInterval(() => {
   if (gotState || ++helloTries > 40) { clearInterval(helloTimer); return; }
