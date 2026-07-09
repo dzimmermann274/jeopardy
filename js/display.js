@@ -405,18 +405,19 @@ function runBoardReveal() {
   if (!tiles.length) { cancelBoardReveal(); return; }
   boardRevealPhase = "running";
   const GROUPS = Math.min(6, tiles.length);
-  // Randomly assign each tile to a round so the board fills in a scattered,
-  // arcade-like order (not row by row); then make sure no round ends up empty.
-  const groups = Array.from({ length: GROUPS }, () => []);
-  tiles.forEach(t => groups[Math.floor(Math.random() * GROUPS)].push(t));
-  for (let g = 0; g < GROUPS; g++) {
-    while (!groups[g].length) {                       // borrow one from the biggest round
-      let big = 0;
-      for (let k = 0; k < GROUPS; k++) if (groups[k].length > groups[big].length) big = k;
-      groups[g].push(groups[big].pop());
-    }
+  // Shuffle the tiles (so WHICH tiles appear each round stays random and
+  // scattered, not row by row), then deal them into the rounds in EVEN chunks —
+  // each round reveals about the same number of tiles, at a fixed interval, so
+  // the pacing is steady instead of lumpy.
+  const shuffled = tiles.map(t => [Math.random(), t]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  const base = Math.floor(shuffled.length / GROUPS), rem = shuffled.length % GROUPS;
+  const groups = [];
+  for (let g = 0, idx = 0; g < GROUPS; g++) {
+    const count = base + (g < rem ? 1 : 0);   // spread the remainder over the first few rounds
+    groups.push(shuffled.slice(idx, idx + count));
+    idx += count;
   }
-  const LEAD = 160, GAP = 500;
+  const LEAD = 160, GAP = 500;   // fixed interval between rounds
   let clock = LEAD;
   groups.forEach((grp, g) => {
     boardRevealTimers.push(setTimeout(() => {
