@@ -15,7 +15,9 @@ The game **mirrors a copy of the "Jeopardy Questions" workbook** (template in
 
 - **📖 READ ME FIRST** tab — instructions for the question-writer.
 - **⚙️ Game Setup** tab — game title (shown on the TV), team names, players per team
-  (shown on the TV scoreboard), and an optional Final Jeopardy.
+  (shown on the TV scoreboard), and an optional Final Jeopardy (category, question, and
+  answer). The optional **Final Jeopardy instructions** shown on the intro screen are
+  read from **cell D18** of this tab (leave it blank to just show the title).
 - **🗂 Question Bank** tab — the master list: every question gets an ID number. An answer
   of **UNKNOWN** means no preset answer — the host types it live in the control panel and
   releases it to the TV (every question also has a subtle "type a different answer"
@@ -83,7 +85,29 @@ the control panel is reloaded or a new game starts.
 
 Use **🏆 Announce winner** (top of the control panel) at any point to show a final
 results screen on the TV with the champion highlighted (ties handled); it asks "are you
-sure" first. **◀ Back to game** returns to play.
+sure" first. **◀ Back to game** returns to play. **Show scores on TV** puts up the
+current standings with no winner regalia — both of those buttons are independent of the
+Final Jeopardy sequence below.
+
+**Final Jeopardy** (the gold button in the toolbar, shown once a game with a Final is
+loaded) asks "are you sure", then runs a host-paced, TV-driven sequence — you push it
+forward one step at a time from the control panel:
+
+1. **Instructions** — a big *FINAL JEOPARDY!* card flies in and off, revealing the rules
+   from the sheet (Game Setup **D18**).
+2. **Category** — a huge *CATEGORY* holds for a beat, then shrinks and rises as the actual
+   category effects in; enter each team's secret wager on the control panel.
+3. **Clue** — the question appears and behaves exactly like a normal clue: a **30-second
+   timer** (with or without the think music), then **Reveal answer**, then score each
+   team's wager Right/Wrong.
+4. **Reveal the winner** — the post-results button. The TV first shows a *Tallying scores…*
+   loader; then, one click per place, the standings are unveiled **last place → first**.
+   Each team pops up **large in the center** then drops into its slot, and every card shows
+   a green/red Final-Jeopardy swing (how much that team won or lost). A fanfare plays when
+   the champion lands. **Done — back to the game** returns to the board.
+
+The existing **Announce winner** and **Show scores on TV** buttons are unchanged and stay
+independent of this sequence.
 
 If the browser reloads mid-game, reopen the link: the setup screen offers **Resume that
 game** with scores and board progress intact.

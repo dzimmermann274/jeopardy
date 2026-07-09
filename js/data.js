@@ -20,7 +20,7 @@
 
    A game object:
    { title, rounds: [{ name, categories: [{ name, clues: [{value, clue, answer, dd, used}] }] }],
-     final: {category, clue, answer} | null,
+     final: {category, clue, answer, unknown, instructions} | null,
      teams: [{name, players: []}] }          // suggested teams from the sheet
    ============================================================ */
 
@@ -303,12 +303,21 @@ function parseSetupTab(ws) {
   }
 
   const fCat = findValue(/final\s*jeopardy\s*category/i);
-  const fClue = findValue(/final\s*jeopardy\s*(question|clue)/i);
+  let fClue = findValue(/final\s*jeopardy\s*(question|clue)/i);
   const fAns = findValue(/final\s*jeopardy\s*answer/i);
+  // Final Jeopardy instructions (shown on the intro screen) live in a dedicated
+  // cell — Game Setup D18. Read it directly by address, like C5/E4, since
+  // sheet_to_json indexes relative to the used range and can't hit a fixed cell.
+  const fInstr = cellText(ws, "D18");
+  // Guard: the "Final Jeopardy question" label sits in B18, so if the writer
+  // left the question cell (C18) blank, findValue would walk right and wrongly
+  // grab the instructions from D18. Only discard it in THAT case (C18 blank) —
+  // a filled C18 is always the clue, even if it happens to equal the instructions.
+  if (fClue && fInstr && fClue === fInstr && !cellText(ws, "C18")) fClue = "";
   if (fClue) {
     // No/UNKNOWN answer -> the host types the final answer live.
     const unknown = !fAns || /^unknown\b/i.test(fAns);
-    out.final = { category: fCat || "Final Jeopardy", clue: fClue, answer: unknown ? "" : fAns, unknown };
+    out.final = { category: fCat || "Final Jeopardy", clue: fClue, answer: unknown ? "" : fAns, unknown, instructions: fInstr };
   }
   return out;
 }

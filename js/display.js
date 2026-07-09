@@ -29,11 +29,16 @@ let winnerShown = false;   // same idea for the winner banner's pop
 let wantFs = false;         // opened for a fullscreen deploy but not yet in fullscreen
 let lastRenderedView = null; // the S.view we last rendered (to detect board -> clue)
 let flying = false;          // a "tile flies to full screen" animation is in progress
+let lastFinalReveal = 0;     // final-winner: places unveiled at the last render (animate only the newest)
+let winnerHeroTimer = null;  // pending "hold in center, then drop to slot" release for the newest team
 
 function renderDisplay() {
   // Clear any leftover fly background from a previous flight before we rebuild.
   const staleBg = document.getElementById("flyBoardBg");
   if (staleBg) staleBg.remove();
+  // Any pending winner "hold, then drop" release is superseded by this re-render
+  // (the card it targeted is about to be rebuilt); a fresh one is armed below.
+  clearTimeout(winnerHeroTimer); winnerHeroTimer = null;
 
   // "Fly the tile to full screen": when a clue is picked from the board, capture
   // the tile's on-screen rect NOW (the board is still in the DOM) and keep the
@@ -67,6 +72,13 @@ function renderDisplay() {
   // Same first-appearance gating for the winner banner's pop.
   const animateWin = S.view === "winner" && !winnerShown;
   winnerShown = S.view === "winner";
+  // True only on the first render of a newly-entered view, so the Final Jeopardy
+  // entrance animations play once and then hold static across incidental
+  // re-renders (e.g. a score edit) instead of replaying every time.
+  const firstOfView = lastRenderedView !== S.view;
+  // Places unveiled on the previous render of the standings — used so only the
+  // just-revealed place animates in (older ones stay put).
+  const prevFinalReveal = (lastRenderedView === "final-winner") ? lastFinalReveal : 0;
 
   if (S.phase === "setup" || !S.game || S.view === "welcome") {
     view = welcomeHtml();
@@ -100,16 +112,41 @@ function renderDisplay() {
       </div></div>`;
   } else if (S.view === "dd") {
     view = `<div class="clue-full"><div class="clue-inner"><div class="dd-splash">DAILY<br>DOUBLE!</div></div></div>`;
+  } else if (S.view === "final-intro") {
+    // Two-card handoff: on first entry a big "FINAL JEOPARDY!" card flies in
+    // from nothing, holds, then flies off — revealing the instructions card
+    // underneath. On any later re-render only the settled instructions card shows.
+    const instr = (S.game.final && S.game.final.instructions) || "";
+    view = `<div class="clue-full fj-screen fj-intro"><div class="fj-rays"></div>
+      <div class="fj-content">
+        <div class="fj-intro-card${firstOfView ? " anim-cardin" : ""}">
+          <div class="fj-intro-header">FINAL JEOPARDY</div>
+          ${instr
+            ? `<div class="fj-instructions">${fmtText(instr)}</div>`
+            : `<div class="fj-getready">Get ready…</div>`}
+        </div>
+      </div>
+      ${firstOfView ? `<div class="fj-splash"><span>FINAL<br>JEOPARDY!</span></div>` : ""}
+    </div>`;
   } else if (S.view === "final-category") {
-    view = `<div class="clue-full"><div class="clue-inner">
-      <div class="clue-cat">Final Jeopardy — The category is</div>
-      <div class="clue-text" style="font-size:6vw">${esc(S.game.final.category)}</div></div></div>`;
+    // On first entry a huge "CATEGORY" flies in and holds ~3s, then shrinks and
+    // rises while the real category name effects in below it. Later re-renders
+    // show the settled state (small "CATEGORY" header + the category name).
+    view = `<div class="clue-full fj-screen fj-cat"><div class="fj-rays"></div>
+      <div class="fj-content">
+        <div class="fj-cat-word${firstOfView ? " anim-catword" : ""}">CATEGORY</div>
+        <div class="fj-cat-name${firstOfView ? " anim-catname" : ""}">${fmtText(S.game.final.category)}</div>
+      </div>
+      ${firstOfView ? `<div class="fj-cat-big"><span>CATEGORY</span></div>` : ""}
+    </div>`;
   } else if (S.view === "final-clue") {
     const f = S.game.final;
     const fimgs = currentClueImages(f, S.finalRevealed);
     view = (S.photoZoom && fimgs.length)
       ? photoZoomHtml(fimgs)
-      : clueScreenHtml(f.category, f.clue, f.answer, S.finalRevealed, fimgs, animateAnswer, f.replace, clueImageChanges(f));
+      : clueScreenHtml("Final Jeopardy — " + f.category, f.clue, f.answer, S.finalRevealed, fimgs, animateAnswer, f.replace, clueImageChanges(f));
+  } else if (S.view === "final-winner") {
+    view = finalWinnerHtml();
   } else if (S.view === "clue" && S.active) {
     const cl = activeClue();
     if (cl) {
@@ -145,8 +182,10 @@ function renderDisplay() {
   // The scores strip belongs on the board; the full-screen clue views (a fixed
   // .clue-full) cover it anyway, and rendering it there makes it flash at the top
   // during the tile-fly (the fixed clue leaves the strip as the only in-flow child).
-  const clueFullView = S.view === "clue" || S.view === "dd" || S.view === "final-category" || S.view === "final-clue";
-  const showStrip = S.phase === "play" && !clueFullView && S.view !== "bigscores" && S.view !== "winner" && S.teams.length;
+  const clueFullView = S.view === "clue" || S.view === "dd"
+    || S.view === "final-intro" || S.view === "final-category" || S.view === "final-clue";
+  const showStrip = S.phase === "play" && !clueFullView
+    && S.view !== "bigscores" && S.view !== "winner" && S.view !== "final-winner" && S.teams.length;
   app.innerHTML = `
     <div class="disp-stage">
       ${view}
@@ -164,10 +203,65 @@ function renderDisplay() {
   runTimerBar();
   renderCurtain();
   lastRenderedView = S.view;
+  lastFinalReveal = (S.view === "final-winner") ? (S.finalReveal || 0) : 0;
   fitClue();                          // immediate best-effort (sizes text at full screen)
   if (flyFrom) startClueFly(flyFrom, flyBoardBg);   // ...then fly the sized clue in from the tile
+  // Winner reveal: when exactly one new place was just unveiled, make that team's
+  // card appear big in the center, hold, then drop into its slot (last place ->
+  // first). Skipped on "reveal all" (a multi-step jump), on the loader (0), and on
+  // a fresh entry/resume into the view (!firstOfView) so a reopened display window
+  // reconstructs the standings statically instead of spuriously re-flying place 1.
+  if (S.view === "final-winner" && !firstOfView
+      && (S.finalReveal || 0) - prevFinalReveal === 1 && (S.finalReveal || 0) > 0) {
+    const card = document.querySelector(".standings-list .standing-card");   // first = newest = top of the stack
+    if (card) startWinnerHero(card);
+  }
   requestAnimationFrame(fitClue);     // correct once layout/fonts have settled (skipped while flying)
   setTimeout(fitClue, 250);           // backup in case fonts/layout settle later
+}
+
+/* Winner reveal "center hero": the just-unveiled team card (already sitting in its
+   resting slot) is transformed to appear large in the middle of the screen, held
+   briefly, then transitioned back to its slot (transform:none). FLIP-style, like
+   startClueFly but reversed and with a dramatic hold. Robust: a following
+   re-render rebuilds #app (dropping the transform), and the timer is cleared up
+   top and guarded, so nothing lingers if the host reveals the next place quickly. */
+function startWinnerHero(card) {
+  const to = card.getBoundingClientRect();
+  if (!to.width || !to.height) return;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const champ = card.classList.contains("champ");
+  // Scale so the hero is clearly large in the centre but always fits; force a real
+  // enlargement (the resting card is already fairly wide) and give the champion more.
+  let scale = Math.min((vw * 0.9) / to.width, (vh * (champ ? 0.62 : 0.56)) / to.height, champ ? 3.2 : 2.8);
+  if (!(scale > 0.2)) return;
+  scale = Math.max(scale, champ ? 1.4 : 1.3);
+  const cx = to.left + to.width / 2, cy = to.top + to.height / 2;
+  const tx = (vw / 2 - cx), ty = (vh * 0.45 - cy);   // toward the centre (a hair above middle)
+  card.style.transformOrigin = "center center";
+  card.style.transition = "none";
+  card.style.zIndex = "6";
+  card.style.willChange = "transform";
+  card.classList.add("hero-fly");
+  card.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${scale.toFixed(3)})`;
+  void card.offsetWidth;                              // commit the start state before transitioning
+  winnerHeroTimer = setTimeout(() => {
+    winnerHeroTimer = null;
+    if (!card.isConnected) return;
+    card.style.transition = "transform .8s cubic-bezier(.2,.8,.2,1)";
+    card.style.transform = "none";                    // drop into the slot
+    let done = false;
+    const finish = () => {
+      if (done || !card.isConnected) return;
+      done = true;
+      card.style.transition = ""; card.style.transform = ""; card.style.transformOrigin = "";
+      card.style.zIndex = ""; card.style.willChange = ""; card.classList.remove("hero-fly");
+    };
+    card.addEventListener("transitionend", function h(e) {
+      if (e.propertyName === "transform") { card.removeEventListener("transitionend", h); finish(); }
+    });
+    setTimeout(finish, 1000);                          // fallback if transitionend never fires
+  }, 1150);                                            // the dramatic hold in the centre
 }
 
 /* Grow the just-rendered clue out of the tile it was picked from (FLIP): start it
@@ -350,6 +444,57 @@ function imgFail(img) {
 function photoZoomHtml(imgs) {
   return `<div class="photo-zoom${imgs.length > 1 ? " multi" : ""}">
     ${imgs.map(u => `<img class="pz-img" src="${esc(u)}" alt="" onerror="imgFail(this)">`).join("")}</div>`;
+}
+
+/* The Final Jeopardy standings reveal (the "final-winner" view): the whole
+   ranked board is laid out 1st place at the top -> last place at the bottom, but
+   it's UNVEILED from the bottom up (last place first) as the host steps through
+   it. S.finalReveal is how many places are showing; every other slot is a masked
+   placeholder. Only the just-revealed place animates in (prevReveal gates that),
+   and the champion's slot gets the big flourish. */
+function finalWinnerHtml() {
+  const standings = finalStandings(S.teams);          // [{team, idx, rank, isTop}] high -> low
+  const N = standings.length;
+  const revealed = Math.min(Math.max(S.finalReveal || 0, 0), N);
+
+  // finalReveal 0 == the "Tallying scores…" loader that opens the reveal.
+  if (revealed === 0) {
+    return `<div class="clue-full fj-screen fj-tally"><div class="fj-rays"></div>
+      <div class="fj-content">
+        <div class="fj-banner">FINAL JEOPARDY</div>
+        <div class="tally-title">Tallying the scores<span class="tally-dots"><i>.</i><i>.</i><i>.</i></span></div>
+        <div class="tally-loader">${"<span></span>".repeat(7)}</div>
+      </div></div>`;
+  }
+
+  // Only the revealed teams show, stacked at the bottom (last place lowest); each
+  // new one is prepended at the top of the stack and flown in from the centre by
+  // startWinnerHero(). Cards are sized for the full team count so they never
+  // resize as more appear. Every box is centre-justified and carries a green/red
+  // Final Jeopardy delta.
+  const shown = standings.slice(N - revealed);        // high -> low; first = newest = top of stack
+  const showPlayers = N <= 4;                          // drop the players line in a crowded field so cards fit
+  const cards = shown.map(s => {
+    const champ = s.isTop;
+    const d = finalDelta(s.idx);
+    const dCls = d > 0 ? "up" : d < 0 ? "down" : "flat";
+    const dTxt = d > 0 ? "+" + money(d) : d < 0 ? money(d) : "no change";
+    const players = showPlayers && s.team.players && s.team.players.length
+      ? `<div class="sc-players">${esc(s.team.players.join(" · "))}</div>` : "";
+    return `<div class="standing-card${champ ? " champ" : ""}">
+      ${champ ? `<div class="sc-champ-tag">CHAMPION</div>` : ""}
+      <div class="sc-place">${ordinal(s.rank)} place</div>
+      <div class="sc-name">${esc(s.team.name)}</div>
+      ${players}
+      <div class="sc-score${s.team.score < 0 ? " neg" : ""}">${money(s.team.score)}</div>
+      <div class="sc-delta ${dCls}"><span class="sc-delta-cap">Final Jeopardy </span>${dTxt}</div>
+    </div>`;
+  }).join("");
+  const complete = revealed >= N;
+  return `<div class="clue-full fj-screen fj-standings${complete ? " complete" : ""}"><div class="fj-rays"></div>
+    <div class="fj-standings-title">FINAL STANDINGS</div>
+    <div class="standings-list" style="--nrows:${N}">${cards}</div>
+  </div>`;
 }
 
 function clueScreenHtml(catLabel, clue, answer, revealed, image, animate, replace, imageChanged) {

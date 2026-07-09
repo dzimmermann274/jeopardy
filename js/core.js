@@ -18,7 +18,9 @@ function freshState() {
     game: null,              // see js/data.js for the game object shape
     roundIdx: 0,
     teams: [],               // [{name, score}]
-    view: "welcome",         // welcome | board | clue | dd | final-category | final-clue | bigscores | winner
+    view: "welcome",         // welcome | board | clue | dd | bigscores | winner
+                             //   Final Jeopardy sequence (stepped from the control panel):
+                             //   final-intro | final-category | final-clue | final-tally | final-winner
     prevView: null,          // view to return to when leaving bigscores
     winnerPrev: null,        // view to return to when leaving the winner screen (separate from bigscores)
     active: null,            // {cat, row}
@@ -28,6 +30,7 @@ function freshState() {
     finalWagers: [],         // per-team wagers for final
     finalRevealed: false,
     finalAwarded: {},        // teamIdx -> "+"|"-" for final (double-award guard)
+    finalReveal: 0,          // final-winner: how many places are unveiled so far (from last place up)
     timer: null,             // {startedAt, seconds}
     photoZoom: false,        // blow the current clue's photo(s) up to fill the TV
     stage: "game",           // display curtain, independent of the game view:
@@ -153,6 +156,33 @@ function winnersOf(teams) {
   return teams.filter(t => t.score === max);
 }
 function money(n) { return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(); }
+/* "1st", "2nd", "3rd", "4th"… — place labels for the Final Jeopardy standings. */
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+/* Teams ranked high -> low (1st place first), with standard competition ranks
+   so ties share a place (1, 2, 2, 4). Each entry keeps its ORIGINAL index (idx)
+   in the passed array, so callers can look up that team's final wager/result.
+   Used by the Final Jeopardy standings reveal. */
+function finalStandings(teams) {
+  const sorted = teams.map((t, i) => ({ team: t, idx: i })).sort((a, b) => b.team.score - a.team.score);
+  const top = sorted.length ? sorted[0].team.score : null;
+  return sorted.map(e => ({
+    team: e.team,
+    idx: e.idx,
+    rank: sorted.findIndex(x => x.team.score === e.team.score) + 1,   // ties => same rank
+    isTop: top !== null && e.team.score === top,
+  }));
+}
+/* A team's Final Jeopardy swing: +wager if it was marked right, -wager if wrong,
+   0 if it wasn't scored (or wagered nothing). Drives the green/red delta shown on
+   each winner-reveal card. */
+function finalDelta(teamIdx) {
+  const sign = S.finalAwarded && S.finalAwarded[teamIdx];
+  const w = (S.finalWagers && S.finalWagers[teamIdx]) || 0;
+  return sign === "+" ? w : sign === "-" ? -w : 0;
+}
 function currentRound() { return S.game ? S.game.rounds[S.roundIdx] : null; }
 function activeClue() {
   const r = currentRound();
