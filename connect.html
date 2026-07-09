@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connect devices — Jeopardy</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<!-- ==========================================================
+     The "Connect your devices" page. server.py opens this
+     automatically when it starts. It asks the server for the
+     current address (/net-info) and shows each screen's address
+     big, with a QR code, so phones/iPads can just scan and TVs
+     can be typed into. Standalone like host.html: it loads only
+     the QR library, none of the game's scripts.
+     ========================================================== -->
+<style>
+  :root {
+    --panel-bg: #1e2130; --panel-card: #2a2e42; --gold: #FFCC00;
+    --accent: #4a7dff; --text: #e8eaf2; --dim: #9aa1b9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+         background: var(--panel-bg); color: var(--text); min-height: 100vh;
+         padding: 28px 20px 48px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 26px; }
+  h1 span { color: var(--gold); }
+  .sub { color: var(--dim); margin: 8px 0 24px; line-height: 1.55; max-width: 740px; }
+  .sub b { color: var(--text); }
+
+  #status { margin: 46px auto; max-width: 580px; text-align: center;
+            color: var(--dim); line-height: 1.65; font-size: 15px; }
+  #status b { color: var(--text); }
+  #status code { color: var(--gold); font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+  .cards { display: flex; gap: 18px; flex-wrap: wrap; align-items: stretch; }
+  .card { background: var(--panel-card); border: 1px solid #3a3f58; border-radius: 14px;
+          padding: 20px; flex: 1 1 300px; display: flex; flex-direction: column; gap: 14px; }
+  .card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--gold); }
+  .what { color: var(--dim); font-size: 13.5px; line-height: 1.5; min-height: 42px; }
+  .qr { background: #fff; border-radius: 10px; padding: 10px; width: 216px; margin: 0 auto; }
+  .qr svg { display: block; width: 100%; height: auto; }
+  .addr { font-family: ui-monospace, Menlo, Consolas, monospace;
+          font-size: clamp(16px, 2vw, 20px); background: #191c2b; border: 1px solid #3a3f58;
+          border-radius: 10px; padding: 12px; text-align: center; word-break: break-all;
+          color: #fff; }
+  .alt { color: var(--dim); font-size: 12.5px; text-align: center; line-height: 1.5; }
+  .alt code { color: var(--text); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  a.open { display: block; text-align: center; background: var(--accent); color: #fff;
+           text-decoration: none; font-weight: 700; border-radius: 10px; padding: 13px;
+           font-size: 15.5px; margin-top: auto; }
+
+  .notes { margin-top: 28px; color: var(--dim); font-size: 13.5px; line-height: 1.75;
+           max-width: 780px; }
+  .notes b { color: var(--text); }
+  .notes h3 { color: var(--text); font-size: 14px; margin: 14px 0 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎯 Jeopardy — <span>connect your devices</span></h1>
+  <p class="sub">Each screen of the game gets its own address. <b>Scan a QR code with a
+     phone or iPad's camera</b>, or type the address into the device's web browser.
+     Every device must be on the <b>same Wi-Fi</b> as this computer.</p>
+
+  <div id="status">Looking for the Jeopardy server&hellip;</div>
+  <div class="cards" id="cards" hidden></div>
+  <div class="notes" id="notes" hidden>
+    <h3>Will these addresses be the same next time?</h3>
+    Usually, yes — feel free to bookmark them. The number version can occasionally change
+    (for example after the router restarts), but this page <b>always shows the current,
+    correct address</b> — so if a bookmark ever stops working, just start the server and
+    look here again. The name version (<span id="noteName"></span>) stays the same even when
+    the number changes; it works on Apple devices and most laptops, but some TVs only accept
+    the number version.
+    <h3>If a device can't connect</h3>
+    Check it's on the same Wi-Fi (not cellular data, not a guest network). The first time you
+    run the server, click <b>Allow</b> if the computer's firewall asks. If a TV browser adds
+    <b>https://</b> by itself, retype the address starting with <b>http://</b> (no&nbsp;s).
+    And keep the server window open the whole game — closing it disconnects everyone.
+  </div>
+</div>
+
+<script src="js/vendor/qrcode.js"></script>
+<script>
+"use strict";
+(function () {
+  var SCREENS = [
+    { title: "🎛 Control panel", path: "/",
+      what: "Runs the whole game — Danny's screen. Open it on ONE device only " +
+            "(usually this computer).",
+      button: "Open the control panel on this device" },
+    { title: "📺 TV display", path: "/tv",
+      what: "The game board everyone watches. Type this address into the TV's web browser:" },
+    { title: "🧑‍🏫 Host view", path: "/host",
+      what: "For whoever reads the questions and judges answers — it shows the answer " +
+            "early. Scan with the iPad or phone camera:" },
+  ];
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text) n.textContent = text;
+    return n;
+  }
+
+  function qrSvg(url) {
+    var q = qrcode(0, "M");   // 0 = pick the smallest size that fits
+    q.addData(url);
+    q.make();
+    return q.createSvgTag(6, 4);   // 4-module quiet zone (the QR spec's margin)
+  }
+
+  function render(info) {
+    var ipBase = "http://" + info.ip + ":" + info.port;
+    var nameBase = info.name ? "http://" + info.name + ":" + info.port : null;
+    var cards = document.getElementById("cards");
+    cards.innerHTML = "";
+
+    SCREENS.forEach(function (s) {
+      var card = el("div", "card");
+      card.appendChild(el("h2", null, s.title));
+      card.appendChild(el("div", "what", s.what));
+
+      var qr = el("div", "qr");
+      qr.innerHTML = qrSvg(ipBase + s.path);
+      card.appendChild(qr);
+
+      card.appendChild(el("div", "addr", ipBase + s.path));
+      if (nameBase) {
+        var alt = el("div", "alt");
+        alt.appendChild(document.createTextNode("also works: "));
+        var code = el("code", null, nameBase + s.path);
+        alt.appendChild(code);
+        card.appendChild(alt);
+      }
+      if (s.button) {
+        var a = el("a", "open", s.button);
+        a.href = "./";
+        card.appendChild(a);
+      }
+      cards.appendChild(card);
+    });
+
+    if (info.name) document.getElementById("noteName").textContent = nameBase;
+    document.getElementById("status").hidden = true;
+    cards.hidden = false;
+    document.getElementById("notes").hidden = false;
+  }
+
+  var tries = 0;
+  function fail() {
+    tries++;
+    document.getElementById("status").innerHTML =
+      "<b>The Jeopardy server isn't running.</b><br><br>" +
+      "On the game computer, double-click <b>Start Jeopardy.command</b> " +
+      "(on Windows: <b>Start Jeopardy (Windows).bat</b>) in the game folder &mdash; " +
+      "or run <code>python3 server.py</code> in a terminal. " +
+      "This page will connect by itself once it's up.";
+    setTimeout(load, 2000);   // keep watching quietly — it appears as soon as the server starts
+  }
+
+  function load() {
+    fetch("net-info", { cache: "no-store" })
+      .then(function (r) { return (r && r.ok) ? r.json() : null; })
+      .then(function (info) { (info && info.relay) ? render(info) : fail(); })
+      .catch(fail);
+  }
+  load();
+})();
+</script>
+</body>
+</html>
