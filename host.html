@@ -115,12 +115,16 @@
     margin: 4px 0 22px;
   }
   .qa-answer {
+    /* Gold while it's still a secret (host-only)… */
     background: linear-gradient(180deg, #f7cf5a, #e7b02f);
     color: var(--answer-ink);
     border-radius: 16px;
     padding: clamp(14px, 2vw, 24px) clamp(16px, 2.4vw, 30px);
     box-shadow: 0 10px 30px rgba(0,0,0,.28);
+    transition: background .35s ease;
   }
+  /* …green once it's revealed on the TV, so the host can see it's no longer secret. */
+  .qa-answer.revealed { background: linear-gradient(180deg, #5ed88a, #2fb463); }
   .a-label {
     font-size: clamp(12px, 1.4vw, 15px);
     font-weight: 800;
@@ -285,6 +289,6 @@
   <div id="host-content"></div>
   <div id="host-note" class="host-note" hidden></div>
   <!-- bump ?v= on every deploy so browsers never run stale cached JS -->
-  <script src="js/host.js?v=35"></script>
+  <script src="js/host.js?v=36"></script>
 </body>
 </html>
