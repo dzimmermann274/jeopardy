@@ -39,6 +39,8 @@ function freshState() {
                              //   "title" = fade the TV to the title screen
     hostNote: { text: "", ts: 0 },  // "Note from Danny" pushed to the passive Host View
                              //   (host.html). Never rendered on the TV; the display ignores it.
+    finalPrep: false,        // true while the control panel's "Start Final Jeopardy?" confirm is
+                             //   open — flashes a "Ready for Final Jeopardy" screen on the Host View.
   };
 }
 let S = freshState();
