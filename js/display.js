@@ -604,7 +604,11 @@ function finalWinnerHtml() {
     </div>`;
   }).join("");
   const complete = revealed >= N;
-  return `<div class="clue-full fj-screen fj-standings${complete ? " complete" : ""}"><div class="fj-rays"></div>
+  // A tie for first marks >1 card .champ. Two adjacent champions can't both scale
+  // up on the crowned reveal without overlapping into the small gap, so flag the
+  // container and let the CSS skip the grow-toward-each-other for co-champions.
+  const multiChamp = standings.filter(s => s.isTop).length > 1;
+  return `<div class="clue-full fj-screen fj-standings${complete ? " complete" : ""}${multiChamp ? " multi-champ" : ""}"><div class="fj-rays"></div>
     <div class="fj-standings-title">FINAL STANDINGS</div>
     <div class="standings-list" style="--nrows:${N}">${cards}</div>
   </div>`;
