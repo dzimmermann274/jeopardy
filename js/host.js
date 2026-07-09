@@ -8,8 +8,10 @@
    • LIVE VIEW — a passive mirror of the game: the current question in
      big plain text, the answer (shown to the host even before it's
      revealed on the TV), the 30-second timer, the winner-reveal
-     heads-up, and "notes from Danny". The one thing the host can
-     CHANGE from here is Final Jeopardy wagers (see below).
+     heads-up, "notes from Danny", and — while the TV plays Show
+     Categories — a full-screen teleprompter that slides a green box
+     down the day's categories in sync with the TV. The one thing the
+     host can CHANGE from here is Final Jeopardy wagers (see below).
 
    • QUESTION PREVIEW — a bare-bones browser: tap any clue on the board
      to see its question, picture, and answer on one readable screen,
@@ -35,6 +37,8 @@ try { const m = localStorage.getItem(MODE_KEY); if (m === "live" || m === "previ
 let previewSel = null;   // preview mode: {cat,row} | "final" | null (the clue being previewed)
 let lastContent = null;  // cache of #host-content HTML, so an unchanged state doesn't rebuild
                          //   the DOM (avoids reloading preview <img>s and losing scroll)
+let catIntro = null;     // {cats:[...]} while the synced category reveal is playing; null otherwise
+let ciTimers = [];       // its pending step timeouts (cancelled on teardown / replay)
 
 /* ---------------- helpers (mirrored from core.js) ---------------- */
 function esc(s) {
@@ -98,10 +102,13 @@ function clueImages(cl) {
 /* ---------------- receive state (passive) ---------------- */
 CHANNEL.onmessage = (ev) => {
   const msg = ev.data;
-  if (msg && msg.type === "state") {   // the ONLY message we ever act on
+  if (!msg) return;
+  if (msg.type === "state") {           // the game snapshot — our main input
     S = msg.state;
     gotState = true;
     render();
+  } else if (msg.type === "play-intro") {   // the TV is playing the category reveal
+    startCatIntro();                    // mirror it here as a host teleprompter (read-only)
   }
 };
 
@@ -304,7 +311,10 @@ function scoresHtml(title) {
     <div class="scores-title">${esc(title)}</div>
     <div class="scores-list">
       ${sorted.map(t => `<div class="score-row">
-        <span class="s-name">${esc(t.name)}</span>
+        <span class="s-team">
+          <span class="s-name">${esc(t.name)}</span>
+          ${t.players && t.players.length ? `<span class="s-players">${esc(t.players.join(" · "))}</span>` : ""}
+        </span>
         <span class="s-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</span>
       </div>`).join("")}
     </div>
@@ -489,6 +499,94 @@ function timerTick() {
   }
   el.hidden = !show;
   document.body.classList.toggle("timer-on", show);
+}
+
+/* ---------------- category reveal (synced to the TV's "Show categories") --------
+   The control panel broadcasts a transient {type:"play-intro"} that plays the
+   full-screen category animation on the TV. We mirror it here as a host
+   teleprompter so he reads each category at the right moment:
+
+     • while the TV's "CATEGORIES" title card holds, a bold GET READY prompt;
+     • a beat before the first category lands on the TV, the whole list appears;
+     • then a big green rectangle slides down one category at a time, IN SYNC with
+       the TV (same timing constants as display.js: 3s title, 2s per category).
+
+   It takes over the entire screen — pulling the host out of Question preview — and
+   clears itself when the TV fades to the board. Purely presentational: it reads
+   the category names from S and never writes anything back. */
+const CI = { TITLE_MS: 3000, CAT_MS: 2000, OUT_MS: 700, LEAD_MS: 600 };
+function ciSchedule(ms, fn) { ciTimers.push(setTimeout(fn, Math.max(0, ms))); }
+function ciOverlay() { return document.getElementById("host-catintro"); }
+
+function startCatIntro() {
+  const r = currentRound();
+  const cats = (r && r.categories) ? r.categories.map(c => c.name) : [];
+  if (!cats.length) return;                 // no board yet — nothing to read; ignore
+  clearCatIntro(true);                      // cancel any prior/replaying run silently
+  catIntro = { cats };
+  if (mode === "preview") setMode("live");  // pull the host out of Question preview
+  buildGetReady();
+  showCatOverlay(true);
+  // The list appears a beat before the first category hits the TV…
+  ciSchedule(CI.TITLE_MS - CI.LEAD_MS, buildCatList);
+  // …then the green rectangle steps down, one category per TV dwell, in sync.
+  cats.forEach((_, k) => ciSchedule(CI.TITLE_MS + k * CI.CAT_MS, () => moveCatMarker(k)));
+  // Clear exactly as the TV finishes fading to the board.
+  ciSchedule(CI.TITLE_MS + cats.length * CI.CAT_MS + CI.OUT_MS, () => clearCatIntro());
+}
+
+function clearCatIntro(silent) {
+  ciTimers.forEach(clearTimeout); ciTimers = [];
+  catIntro = null;
+  showCatOverlay(false);
+  const ov = ciOverlay(); if (ov) ov.innerHTML = "";
+  if (!silent) render();                    // repaint the normal view underneath
+}
+
+function showCatOverlay(on) {
+  const ov = ciOverlay(); if (!ov) return;
+  ov.hidden = !on;
+  document.body.classList.toggle("cat-intro-on", on);
+}
+
+function buildGetReady() {
+  const ov = ciOverlay(); if (!ov) return;
+  ov.innerHTML = `<div class="hv-ci-inner ci-ready-wrap">
+    <div class="hv-ci-kicker">Categories are on the TV</div>
+    <div class="hv-ci-ready">GET READY TO<br>READ CATEGORIES</div>
+  </div>`;
+}
+
+function buildCatList() {
+  if (!catIntro) return;
+  const ov = ciOverlay(); if (!ov) return;
+  const rows = catIntro.cats.map((name, i) => `<div class="hv-cat-row" data-ci="${i}">
+    <span class="ci-num">${i + 1}</span>
+    <span class="ci-name">${fmtText(String(name || "").toUpperCase())}</span>
+    <span class="ci-cue">read ▸</span>
+  </div>`).join("");
+  ov.innerHTML = `<div class="hv-ci-inner ci-list-wrap">
+    <div class="hv-ci-kicker">Read these in order — follow the green box</div>
+    <div class="hv-cat-list"><div class="hv-cat-marker" hidden></div>${rows}</div>
+  </div>`;
+}
+
+/* Slide the green rectangle onto category k (measuring the real row so variable-
+   length names all line up). Toggling .active flips that row's text dark so it
+   reads on the green. */
+function moveCatMarker(k) {
+  if (!catIntro) return;
+  const ov = ciOverlay(); if (!ov) return;
+  if (!ov.querySelector(".hv-cat-list")) buildCatList();   // safety if the list step was skipped
+  const rows = ov.querySelectorAll(".hv-cat-row");
+  const marker = ov.querySelector(".hv-cat-marker");
+  const row = rows[k];
+  if (!row || !marker) return;
+  rows.forEach(r => r.classList.remove("active"));
+  row.classList.add("active");
+  marker.hidden = false;
+  marker.style.top = row.offsetTop + "px";
+  marker.style.height = row.offsetHeight + "px";
 }
 
 /* ---------------- boot ---------------- */

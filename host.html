@@ -210,7 +210,9 @@
     font-size: clamp(18px, 2.2vw, 28px);
   }
   .score-row.win { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+  .s-team { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; text-align: left; }
   .s-name { font-weight: 700; }
+  .s-players { font-size: clamp(12px, 1.5vw, 17px); font-weight: 600; color: var(--muted); line-height: 1.2; }
   .s-score { font-weight: 800; font-variant-numeric: tabular-nums; }
   .s-score.neg { color: var(--red); }
 
@@ -356,6 +358,67 @@
   .pv-a-label { font-weight: 800; color: var(--muted); margin-right: .35em; }
   .pv-a-text { font-weight: 800; color: var(--gold); }
   .pv-a-text.muted { color: var(--muted); font-style: italic; font-weight: 600; }
+
+  /* ---- category-reveal takeover (synced to the TV's "Show categories") ---- */
+  #host-catintro {
+    position: fixed; inset: 0; z-index: 120;
+    display: flex; align-items: center; justify-content: center;
+    padding: clamp(24px, 5vh, 64px) clamp(20px, 5vw, 72px);
+    background:
+      radial-gradient(120% 90% at 50% -12%, rgba(75,214,132,0.12), transparent 60%),
+      linear-gradient(180deg, var(--bg), var(--bg2));
+  }
+  #host-catintro[hidden] { display: none; }        /* beat the id-selector's display:flex */
+  .hv-ci-inner { width: 100%; max-width: 1040px; animation: ciFade .34s ease both; }
+  @keyframes ciFade { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  .hv-ci-kicker {
+    text-align: center; font-size: clamp(14px, 2vw, 22px); font-weight: 800;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: clamp(18px, 4vh, 42px);
+  }
+
+  /* "Get ready" prompt — big and all-bold while the TV holds its title card */
+  .ci-ready-wrap { text-align: center; }
+  .hv-ci-ready {
+    font-size: clamp(40px, 8.4vw, 118px); font-weight: 900; line-height: 1.04;
+    letter-spacing: .01em; color: var(--gold); text-shadow: 0 3px 0 rgba(0,0,0,.28);
+  }
+
+  /* the list + the sliding green rectangle */
+  .hv-cat-list { position: relative; display: flex; flex-direction: column; gap: clamp(8px, 1.5vh, 15px); }
+  .hv-cat-marker {
+    position: absolute; left: 0; right: 0; z-index: 0; border-radius: 16px;
+    background: linear-gradient(180deg, #5ed88a, #2fb463);
+    box-shadow: 0 12px 36px rgba(47,180,99,.45), 0 0 0 2px rgba(140,255,190,.4) inset;
+    transition: top .42s cubic-bezier(.2,.85,.25,1), height .42s cubic-bezier(.2,.85,.25,1);
+  }
+  .hv-cat-marker[hidden] { display: none; }
+  .hv-cat-row {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; gap: clamp(12px, 2vw, 22px);
+    padding: clamp(12px, 2.1vh, 21px) clamp(16px, 2.4vw, 28px);
+    border-radius: 16px; border: 1px solid var(--panel-border); background: var(--panel);
+    transition: color .2s ease, background .2s ease, border-color .2s ease;
+  }
+  .ci-num {
+    flex: none; width: 1.7em; height: 1.7em; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(15px, 1.9vw, 22px); font-weight: 900; font-variant-numeric: tabular-nums;
+    color: var(--gold); background: rgba(244,197,66,.12); border: 1px solid var(--panel-border);
+  }
+  .ci-name {
+    flex: 1 1 auto; min-width: 0;
+    font-size: clamp(19px, 3.1vw, 44px); font-weight: 800; line-height: 1.12; letter-spacing: .01em;
+  }
+  .ci-cue {
+    flex: none; font-size: clamp(12px, 1.5vw, 17px); font-weight: 900;
+    letter-spacing: .14em; text-transform: uppercase; color: #0c2c1a;
+    opacity: 0; transition: opacity .2s ease;
+  }
+  .hv-cat-row.active { background: transparent; border-color: transparent; }
+  .hv-cat-row.active .ci-name { color: #0c2c1a; }
+  .hv-cat-row.active .ci-num { color: #0c2c1a; background: rgba(12,44,26,.16); border-color: transparent; }
+  .hv-cat-row.active .ci-cue { opacity: .92; }
 </style>
 </head>
 <body>
@@ -371,8 +434,10 @@
   </div>
   <div id="host-content"></div>
   <div id="host-note" class="host-note" hidden></div>
+  <!-- full-screen category-reveal takeover, synced to the TV (js/host.js) -->
+  <div id="host-catintro" hidden></div>
   <!-- bump ?v= on every deploy so browsers never run stale cached JS -->
-  <script src="js/bus.js?v=39"></script>
-  <script src="js/host.js?v=39"></script>
+  <script src="js/bus.js?v=40"></script>
+  <script src="js/host.js?v=40"></script>
 </body>
 </html>
