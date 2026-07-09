@@ -437,6 +437,43 @@ function syncTimerAudio() {
   else stopTimerAudio();
 }
 
+/* ---- final-reveal stings (synthesized) ------------------------------------
+   Short, punchy sounds for the last-to-first winner reveal, generated with the
+   Web Audio API so no extra audio files are needed. Played from the control
+   window (each reveal is a host click, so the browser always allows it). A tick
+   for a normal place; a triumphant arpeggio + chord when a champion appears.
+   Everything is wrapped so a browser without Web Audio simply stays silent. */
+let fjAudioCtx = null;
+function fjCtx() {
+  try { if (!fjAudioCtx) fjAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+  catch (e) { fjAudioCtx = null; }
+  return fjAudioCtx;
+}
+function fjTone(ctx, freq, startAt, dur, gain, type) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = type || "triangle"; o.frequency.value = freq;
+  o.connect(g); g.connect(ctx.destination);
+  const t0 = ctx.currentTime + startAt;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function playFinalSting(champion) {
+  const ctx = fjCtx(); if (!ctx) return;
+  try {
+    if (ctx.state === "suspended") ctx.resume();
+    if (champion) {
+      const notes = [523.25, 659.25, 783.99, 1046.5];        // C5 E5 G5 C6 arpeggio
+      notes.forEach((f, i) => fjTone(ctx, f, i * 0.11, 0.85, 0.20, "sawtooth"));
+      notes.forEach(f => fjTone(ctx, f, 0.46, 1.25, 0.13, "triangle"));  // sustained chord
+    } else {
+      fjTone(ctx, 392.00, 0, 0.16, 0.16, "triangle");        // G4 -> D5 rising tick
+      fjTone(ctx, 587.33, 0.085, 0.26, 0.16, "triangle");
+    }
+  } catch (e) { /* audio not allowed / unsupported — reveal is still fully visual */ }
+}
+
 function renderControl() {
   if (IS_DISPLAY) return;
   document.body.className = "control";
@@ -612,7 +649,8 @@ function renderPlay() {
   const cl = activeClue();
   const inClue = S.view === "clue" || S.view === "dd";
   const isDD = cl && cl.dd && S.dd;
-  const isFinal = S.view === "final-category" || S.view === "final-clue";
+  const isFinal = S.view === "final-intro" || S.view === "final-category" || S.view === "final-clue"
+    || S.view === "final-winner";
   const isWinner = S.view === "winner";
 
   let mainHtml = "";
@@ -705,16 +743,25 @@ function renderPlay() {
   };
   const fj = document.getElementById("btnFinal");
   if (fj) fj.onclick = () => {
-    customConfirm("Start Final Jeopardy? (The category will appear on the TV.)").then(ok => {
+    customConfirm("Start Final Jeopardy? The instructions will appear on the TV, and the board is left behind.",
+      { okText: "Start Final Jeopardy" }).then(ok => {
       if (!ok) return;
       liveAnswerDraft = "";
+      finalWagerDrafts = null;
       update(() => {
-        S.view = "final-category"; S.prevView = null;
-        S.finalRevealed = false; S.finalAwarded = {};
-        S.active = null; S.dd = null; S.awarded = {}; S.timer = null;
-        if (!Array.isArray(S.finalWagers) || S.finalWagers.length !== S.teams.length) {
-          S.finalWagers = S.teams.map(() => 0);
+        // If a PRIOR Final Jeopardy was already scored (host is re-running it),
+        // un-bank those awards first — otherwise the fresh scoring pass, which
+        // sees every team as unscored again, would double-count the wagers.
+        if (S.finalAwarded) {
+          for (const i of Object.keys(S.finalAwarded)) {
+            const w = (S.finalWagers && S.finalWagers[i]) || 0;
+            if (S.teams[+i]) S.teams[+i].score -= (S.finalAwarded[i] === "+" ? w : -w);
+          }
         }
+        S.view = "final-intro"; S.prevView = null;
+        S.finalRevealed = false; S.finalAwarded = {}; S.finalReveal = 0;
+        S.active = null; S.dd = null; S.awarded = {}; S.timer = null;
+        S.finalWagers = S.teams.map(() => 0);   // fresh, blank wagers for this run
       });
     });
   };
@@ -799,7 +846,7 @@ function renderPlay() {
       if (!txt) { customAlert("Type the answer first."); return; }
       update(() => {
         S.game.final.answer = txt; S.game.final.unknown = false;
-        S.finalRevealed = true;
+        S.finalRevealed = true; S.timer = null;
       });
     };
     const finalLiveInp = document.getElementById("finalLiveAnswer");
@@ -842,7 +889,14 @@ function renderPlay() {
       if (String(ddDraft.wager).trim() === "" || isNaN(w) || w < 0) { customAlert("Enter a wager amount."); return; }
       update(() => { S.dd = { teamIdx: ddDraft.team, wager: w }; S.view = "clue"; });
     };
-    /* final jeopardy controls */
+    /* ---- final jeopardy: stepped flow ---------------------------------
+       intro -> category (wagers) -> clue (timer/reveal/score) -> tally
+       (loading + confirm scores) -> winner (last-to-first reveal). */
+    const bToCat = document.getElementById("btnFinalToCat");
+    if (bToCat) bToCat.onclick = () => update(() => { S.view = "final-category"; });
+    const bBackIntro = document.getElementById("btnFinalBackIntro");
+    if (bBackIntro) bBackIntro.onclick = () => update(() => { S.view = "final-intro"; });
+
     app.querySelectorAll("[data-fwager]").forEach(inp => inp.oninput = (e) => {
       if (finalWagerDrafts) finalWagerDrafts[+inp.dataset.fwager] = e.target.value;
     });
@@ -850,10 +904,13 @@ function renderPlay() {
     if (fShow) fShow.onclick = () => {
       const wagers = (finalWagerDrafts || []).map(v => Math.max(0, Math.round(+v) || 0));
       while (wagers.length < S.teams.length) wagers.push(0);
-      update(() => { S.finalWagers = wagers; S.view = "final-clue"; S.finalRevealed = false; S.finalAwarded = {}; });
+      update(() => { S.finalWagers = wagers; S.view = "final-clue"; S.finalRevealed = false; S.finalAwarded = {}; S.timer = null; });
     };
+    const bBackCat = document.getElementById("btnFinalBackCat");
+    if (bBackCat) bBackCat.onclick = () => update(() => { S.view = "final-category"; S.timer = null; });
+
     const fReveal = document.getElementById("btnFinalReveal");
-    if (fReveal) fReveal.onclick = () => update(() => { S.finalRevealed = true; });
+    if (fReveal) fReveal.onclick = () => update(() => { S.finalRevealed = true; S.timer = null; });
     app.querySelectorAll("[data-faward]").forEach(b => b.onclick = () => {
       const [i, sign] = b.dataset.faward.split(":");
       if (S.finalAwarded[i]) return;
@@ -872,9 +929,45 @@ function renderPlay() {
         delete S.finalAwarded[i];
       });
     });
-    const fDone = document.getElementById("btnFinalDone");
-    if (fDone) fDone.onclick = () => update(() => { S.view = "bigscores"; S.prevView = null; });
+    // Back out of the reveal to fix a wager result (only offered before any
+    // place is unveiled, so the reveal itself is never interrupted).
+    const bBackClue = document.getElementById("btnFinalBackClue");
+    if (bBackClue) bBackClue.onclick = () => update(() => { S.view = "final-clue"; });
+
+    /* the dramatic last-to-first reveal — "Reveal the winner" goes straight to
+       the standings view, whose first frame (finalReveal 0) is the "Tallying
+       scores…" loader; the host then steps places up from last to first. */
+    const bRevealWinner = document.getElementById("btnRevealWinner");
+    if (bRevealWinner) bRevealWinner.onclick = () => update(() => { S.view = "final-winner"; S.finalReveal = 0; S.timer = null; });
+    const bRevealNext = document.getElementById("btnRevealNext");
+    if (bRevealNext) bRevealNext.onclick = () => {
+      const N = S.teams.length;
+      const next = Math.min((S.finalReveal || 0) + 1, N);
+      playFinalSting(finalRevealHitsChampion(next));
+      update(() => { S.finalReveal = next; });
+    };
+    const bRevealAll = document.getElementById("btnRevealAll");
+    if (bRevealAll) bRevealAll.onclick = () => {
+      playFinalSting(true);
+      update(() => { S.finalReveal = S.teams.length; });
+    };
+    const bRevealReplay = document.getElementById("btnRevealReplay");
+    if (bRevealReplay) bRevealReplay.onclick = () => update(() => { S.finalReveal = 0; });
+    const bFinalBackGame = document.getElementById("btnFinalBackGame");
+    if (bFinalBackGame) bFinalBackGame.onclick = () => update(() => { S.view = "board"; S.prevView = null; });
   }
+}
+
+/* True when unveiling `count` places (from last up) puts a top-scoring team on
+   screen — i.e. a champion just appeared, so play the big fanfare not a tick.
+   The team just revealed sits at index (N - count) in the high->low standings;
+   with a tie for first, that can happen a step before the very last reveal. */
+function finalRevealHitsChampion(count) {
+  const st = finalStandings(S.teams);
+  const N = st.length;
+  if (count < 1 || count > N) return false;
+  const just = st[N - count];
+  return !!just && just.isTop;
 }
 
 /* The board mirrors the sheet: rows are the dollar values that exist in the
@@ -1015,8 +1108,43 @@ function clueControlHtml(cl, isDD) {
   </div>`;
 }
 
+/* Right/Wrong (or Undo) rows for scoring each team's wager. Shared by the clue
+   screen (right after the reveal) and the "Tallying scores…" screen, so the host
+   can score or fix results on whichever one they're on. */
+function finalScoreRowsHtml() {
+  return S.teams.map((t, i) => {
+    const w = S.finalWagers[i] || 0;
+    if (S.finalAwarded[i]) {
+      const applied = S.finalAwarded[i] === "+" ? `+${money(w)}` : `−${money(w)}`;
+      return `<div class="award-row">
+        <span class="aw-name">${esc(t.name)} — wagered ${money(w)}</span>
+        <span class="hint">${S.finalAwarded[i] === "+" ? "✓ scored " : "✗ scored "}${applied}</span>
+        <button class="btn small" data-funaward="${i}">Undo</button>
+      </div>`;
+    }
+    return `<div class="award-row">
+      <span class="aw-name">${esc(t.name)} — wagered ${money(w)}</span>
+      <button class="btn good small" data-faward="${i}:+">✓ Right</button>
+      <button class="btn bad small" data-faward="${i}:-">✗ Wrong</button>
+    </div>`;
+  }).join("");
+}
+
 function finalControlHtml() {
   const f = S.game.final;
+
+  /* Step 1 — the instruction page is on the TV. */
+  if (S.view === "final-intro") {
+    return `
+    <div class="card">
+      <h2>🏁 Final Jeopardy — the instructions are on the TV</h2>
+      <p class="hint">Everyone reads the rules on the big screen. Collect answer slips and pens, then reveal the category when the room is ready.</p>
+      ${f.instructions ? "" : `<div class="setup-err">No instruction text was found in the sheet (⚙️ Game Setup tab, cell <b>D18</b>), so the screen just shows the Final Jeopardy title. Add text to D18 to give players the rules.</div>`}
+      <div class="field-row"><button class="btn primary" id="btnFinalToCat">Next: reveal the category ▶</button></div>
+    </div>`;
+  }
+
+  /* Step 2 — category is on the TV; enter each team's secret wager. */
   if (S.view === "final-category") {
     if (!finalWagerDrafts || finalWagerDrafts.length !== S.teams.length) {
       finalWagerDrafts = S.teams.map((_, i) => S.finalWagers[i] ? String(S.finalWagers[i]) : "");
@@ -1024,7 +1152,7 @@ function finalControlHtml() {
     return `
     <div class="card">
       <h2>🏁 Final Jeopardy — category is on the TV: "${esc(f.category)}"</h2>
-      <p class="hint">Each team writes a wager on paper (up to their score). Enter the wagers here, then show the clue.
+      <p class="hint">Each team secretly writes a wager on paper (up to their score). Enter the wagers here, then reveal the clue.
       If you're playing, have someone else check that wagers don't exceed scores!</p>
       ${S.teams.map((t, i) => `
         <div class="award-row">
@@ -1032,50 +1160,107 @@ function finalControlHtml() {
           <input type="number" data-fwager="${i}" min="0" step="100" placeholder="Wager ($)"
             value="${esc(finalWagerDrafts[i])}">
         </div>`).join("")}
-      <div class="field-row"><button class="btn primary" id="btnFinalClue">Show the Final Jeopardy clue ▶</button></div>
-    </div>`;
-  }
-  let fAnswerHtml;
-  if (S.finalRevealed) {
-    fAnswerHtml = `<div class="answer-shown">✅ Answer (now on the TV): &nbsp;${fmtText(f.answer)}</div>`;
-  } else if (f.unknown) {
-    fAnswerHtml = `
-    <div class="live-answer">
-      <b>✍️ Final Jeopardy has no preset answer — you type it live.</b>
-      <div class="field-row" style="margin-top:8px">
-        <input type="text" id="finalLiveAnswer" placeholder="Type the answer…" value="${esc(liveAnswerDraft)}">
-        <button class="btn gold" id="btnFinalLiveReveal">Release answer to TV ▶</button>
+      <div class="field-row">
+        <button class="btn primary" id="btnFinalClue">Next: reveal the clue ▶</button>
+        <button class="btn small" id="btnFinalBackIntro">◀ Back to instructions</button>
       </div>
     </div>`;
-  } else {
-    fAnswerHtml = `<div class="answer-hidden">🙈 Answer hidden. Teams write their answers on paper (play the think music!), then reveal.</div>`;
   }
+
+  /* Step 3 — the clue is on the TV; behaves exactly like a normal question
+     (30-second timer with/without music, reveal, then score the wagers). */
+  if (S.view === "final-clue") {
+    let fAnswerHtml;
+    if (S.finalRevealed) {
+      fAnswerHtml = `<div class="answer-shown">✅ Answer (now on the TV): &nbsp;${fmtText(f.answer)}</div>`;
+    } else if (f.unknown) {
+      fAnswerHtml = `
+      <div class="live-answer">
+        <b>✍️ Final Jeopardy has no preset answer — you type it live.</b>
+        <div class="field-row" style="margin-top:8px">
+          <input type="text" id="finalLiveAnswer" placeholder="Type the answer…" value="${esc(liveAnswerDraft)}">
+          <button class="btn gold" id="btnFinalLiveReveal">Release answer to TV ▶</button>
+        </div>
+      </div>`;
+    } else {
+      fAnswerHtml = `<div class="answer-hidden">🙈 Answer hidden — from you too, so you can play! Teams write their answers on paper (start the 30-second timer for the think music!), then reveal.</div>`;
+    }
+    return `
+    <div class="card">
+      <h2>🏁 Final Jeopardy — ${esc(f.category)}</h2>
+      <div class="clue-box"><div class="label">On the TV right now</div><div class="cluetext">${fmtText(f.clue)}</div></div>
+      ${fAnswerHtml}
+      <div class="field-row">
+        ${S.finalRevealed || f.unknown ? "" : `<button class="btn gold" id="btnFinalReveal">Reveal answer on TV</button>`}
+        ${S.finalRevealed ? "" : (S.timer
+          ? `<button class="btn" id="btnTimer">✖ Cancel timer</button>`
+          : `<button class="btn" id="btnTimer">🔊 30-second timer</button>
+             <button class="btn" id="btnTimerSilent">🔇 Timer — no sound</button>`)}
+        ${S.finalRevealed ? "" : `<button class="btn small" id="btnFinalBackCat">◀ Back to category</button>`}
+      </div>
+      ${S.finalRevealed ? `
+        <h2 style="margin-top:16px">Score the wagers</h2>
+        ${finalScoreRowsHtml()}
+        ${S.teams.every((_, i) => S.finalAwarded[i]) ? "" : `<p class="hint" style="color:#e0b24a;margin:4px 0">Some teams aren't scored yet — fine if they didn't wager, but double-check before you reveal.</p>`}
+        <div class="field-row"><button class="btn gold" id="btnRevealWinner">Reveal the winner ▶</button></div>
+        <p class="hint">The TV shows a “Tallying scores…” screen first, then you unveil the standings from last place up.</p>` : ""}
+    </div>`;
+  }
+
+  /* Step 4 — the dramatic last-to-first standings reveal (its first frame,
+     before any place is unveiled, is the "Tallying scores…" loader). */
+  if (S.view === "final-winner") return finalWinnerControlHtml();
+  return "";
+}
+
+/* The control side of the last-to-first reveal: a host reference of the full
+   standings (scores aren't secret) with the reveal button that steps the TV up
+   from last place to the champion. */
+function finalWinnerControlHtml() {
+  const st = finalStandings(S.teams);                 // high -> low
+  const N = st.length;
+  const revealed = Math.min(Math.max(S.finalReveal || 0, 0), N);
+  const champs = st.filter(s => s.isTop);
+  const nextIdx = N - 1 - revealed;                   // bottom-most not-yet-shown
+
+  const ref = st.map((s, i) => {
+    const shown = i >= N - revealed;
+    const isNext = i === nextIdx;
+    return `<li class="fj-ref-row${shown ? " revealed" : ""}${isNext ? " next" : ""}">
+      <span class="ref-place">${ordinal(s.rank)}</span>
+      <span class="ref-team">${esc(s.team.name)}</span>
+      <span class="ref-score">${money(s.team.score)}</span>
+      <span class="ref-state">${shown ? "shown" : (isNext ? "◀ next up" : "hidden")}</span>
+    </li>`;
+  }).join("");
+
+  let action;
+  if (revealed < N) {
+    const next = st[nextIdx];
+    const champNext = next.isTop;
+    action = `
+      <button class="btn gold" id="btnRevealNext">Reveal ${ordinal(next.rank)} place${champNext ? " — the CHAMPION" : ""}: ${esc(next.team.name)} ▶</button>
+      <button class="btn" id="btnRevealAll">Reveal all remaining</button>`;
+  } else {
+    const tie = champs.length > 1;
+    action = `<span class="hint" style="font-size:15px">✅ All places revealed — ${tie ? "co-champions" : "champion"}:
+      <b>${champs.map(c => esc(c.team.name)).join(" &amp; ")}</b> at ${money(champs.length ? champs[0].team.score : 0)}.</span>`;
+  }
+
+  const intro = revealed === 0
+    ? `<p class="hint">The TV shows <b>“Tallying scores…”</b>. Build the suspense — announce last place out loud, <b>then</b> reveal it. Each team pops up big in the centre, then drops into place.</p>`
+    : `<p class="hint">Announce the next place out loud, <b>then</b> click to reveal it. The reveal climbs from last place to the champion.</p>`;
+
   return `
   <div class="card">
-    <h2>🏁 Final Jeopardy — ${esc(f.category)}</h2>
-    <div class="clue-box"><div class="label">On the TV right now</div><div class="cluetext">${fmtText(f.clue)}</div></div>
-    ${fAnswerHtml}
-    <div class="field-row">
-      ${S.finalRevealed || f.unknown ? "" : `<button class="btn gold" id="btnFinalReveal">Reveal answer on TV</button>`}
+    <h2>🏆 Final standings — revealing last place → first on the TV</h2>
+    ${intro}
+    <ol class="fj-ref">${ref}</ol>
+    <div class="field-row">${action}</div>
+    <div class="field-row" style="margin-top:4px">
+      ${revealed === 0 ? `<button class="btn small" id="btnFinalBackClue">◀ Back to fix scoring</button>` : ""}
+      ${revealed > 0 ? `<button class="btn small" id="btnRevealReplay">↻ Start the reveal over</button>` : ""}
+      <button class="btn primary" id="btnFinalBackGame">Done — back to the game</button>
     </div>
-    ${S.finalRevealed ? `
-      <h2 style="margin-top:16px">Score the wagers</h2>
-      ${S.teams.map((t, i) => {
-        const w = S.finalWagers[i] || 0;
-        if (S.finalAwarded[i]) {
-          const applied = S.finalAwarded[i] === "+" ? `+${money(w)}` : `−${money(w)}`;
-          return `<div class="award-row">
-            <span class="aw-name">${esc(t.name)} — wagered ${money(w)}</span>
-            <span class="hint">${S.finalAwarded[i] === "+" ? "✓ scored " : "✗ scored "}${applied}</span>
-            <button class="btn small" data-funaward="${i}">Undo</button>
-          </div>`;
-        }
-        return `<div class="award-row">
-          <span class="aw-name">${esc(t.name)} — wagered ${money(w)}</span>
-          <button class="btn good small" data-faward="${i}:+">✓ Right</button>
-          <button class="btn bad small" data-faward="${i}:-">✗ Wrong</button>
-        </div>`;
-      }).join("")}
-      <div class="field-row"><button class="btn primary" id="btnFinalDone">Show final scores on TV 🏆</button></div>` : ""}
   </div>`;
 }

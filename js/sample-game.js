@@ -56,5 +56,8 @@ const SAMPLE_GAME = {
     category: "World Geography",
     clue: "This is the only country in the world that borders both the Atlantic and Indian Oceans on the African continent's southern tip.",
     answer: "South Africa",
+    // Demo instructions for the intro screen. In a real game this text comes
+    // from cell D18 of the Game Setup tab — not from the code.
+    instructions: "One final clue. One last chance.##Each team secretly wagers any amount up to its score, then has 30 seconds to write an answer.##Right answer: add your wager. Wrong answer: lose it.##Highest score wins it all.",
   },
 };
