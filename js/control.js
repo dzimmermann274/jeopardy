@@ -1063,8 +1063,14 @@ function renderPlay() {
     const label = teamLabel(t, i);
     const announce = () => update(() => {
       S.phones[i] = true;
-      // Snapshot the name too: it's the fallback if this team is later removed.
-      S.phoneAlert = { teamIdx: i, name: dispTeamName(t) || label, ts: Date.now() };
+      // Two snapshots of who called, because the two screens are allowed to say
+      // different things: `name` is TV-safe (blank when the team has no name — the
+      // TV must never print the sheet's ID), `label` is the host's "Team 3" fallback.
+      // Both are only fallbacks: each screen prefers the team's CURRENT name.
+      // ts is forced to move forward, so two calls can never share a timestamp and
+      // silently swallow the second banner.
+      const prev = (S.phoneAlert && S.phoneAlert.ts) || 0;
+      S.phoneAlert = { teamIdx: i, name: dispTeamName(t), label, ts: Math.max(Date.now(), prev + 1) };
     });
     if (S.phones && S.phones[i]) {
       customConfirm(`${label} has already phoned grandma — each team only gets one call. Show the notification again anyway?`,
@@ -1130,9 +1136,14 @@ function renderPlay() {
     if (bBack) bBack.onclick = () => {
       liveAnswerDraft = ""; liveAnswerOpen = false;
       update(() => {
-        const c = activeClue(); if (c) c.used = true;
+        const c = activeClue();
+        // A clue the host RE-SHOWS (to fix a score, say) was already played, and its
+        // turn already passed. Only a clue being put away for the first time hands
+        // the pick on — otherwise a correction would skip a team.
+        const firstTimePlayed = !!(c && !c.used);
+        if (c) c.used = true;
         S.view = "board"; S.active = null; S.revealed = false; S.dd = null; S.awarded = {}; S.timer = null; S.photoZoom = false;
-        stepPicker(1);   // that clue is done — the pick passes to the next team in the rotation
+        if (firstTimePlayed) stepPicker(1);   // the pick passes to the next team in the rotation
       });
     };
     /* live-typed answers (UNKNOWN questions, or overriding a preset one) */

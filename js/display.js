@@ -508,9 +508,11 @@ function renderPhoneToast() {
     return;
   }
   // The team's CURRENT name wins (it may have been renamed since); a.name is the
-  // fallback for a team that's since been removed.
+  // name it had when it called, for a team that has since been removed. Both are
+  // blank for a team that never chose one — and the TV says "A team" rather than
+  // ever printing the sheet's ID. (The Host View uses a.label and does show it.)
   const team = (S.teams || [])[a.teamIdx];
-  const name = dispTeamName(team) || a.name || "That team";
+  const name = dispTeamName(team) || a.name || "A team";
 
   if (!el) {
     el = document.createElement("div");

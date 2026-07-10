@@ -261,8 +261,12 @@ function cellText(ws, addr) {
 /* A team cell that's just a number ("3") or the stock "Team 3" is an ID, not a
    name — the group's handle on the sheet. The players choose their real name
    during the game and the host types it into the control panel, so a placeholder
-   like "Team 3" can never end up on the TV. Anything else is a genuine name. */
-const TEAM_ID_CELL = /^(?:team\s*)?(\d{1,2})$/i;
+   like "Team 3" can never end up on the TV. Anything else is a genuine name.
+
+   Deliberately generous about how a spreadsheet might render that number, because
+   anything it does NOT catch becomes a "name" and lands on the TV: leading zeros
+   ("007"), and the trailing decimals a number-formatted cell shows ("3.00"). */
+const TEAM_ID_CELL = /^(?:team\s*)?(\d{1,3})(?:\.0+)?$/i;
 
 /* The Game Setup tab -> { title, subtitle, rules, categoryNames, teams, final }. */
 function parseSetupTab(ws) {
@@ -304,6 +308,7 @@ function parseSetupTab(ws) {
     const header = rows[teamHeaderIdx];
     const idCol = header.findIndex(c => /team\s*name/i.test(c));
     const playerCol = header.findIndex(c => /player/i.test(c));
+    const draft = [];
     for (let i = teamHeaderIdx + 1; i < rows.length; i++) {
       const r = rows[i];
       if (r.some(c => /final\s*jeopardy/i.test(c))) break;   // reached the Final section
@@ -313,9 +318,20 @@ function parseSetupTab(ws) {
         ? (r[playerCol] || "").split(/[,;]/).map(p => p.trim()).filter(Boolean)
         : [];
       const m = cell.match(TEAM_ID_CELL);
-      out.teams.push(m
-        ? { id: +m[1], name: "", players }                   // just an ID: named live, on the panel
-        : { id: out.teams.length + 1, name: cell, players }); // a real name written into the sheet
+      const asked = m ? parseInt(m[1], 10) : NaN;            // "007" -> 7, "3.00" -> 3
+      draft.push(m && asked > 0
+        ? { wants: asked, name: "", players }                // just an ID: named live, on the panel
+        : { wants: null, name: cell, players });             // a real name written into the sheet
+    }
+    // IDs must be unique — they're the host's only handle on an unnamed group. Give
+    // every row that asked for a number its number (first come, first served), then
+    // hand the rest (named teams, and any duplicate) the next number nobody took.
+    const taken = new Set();
+    for (const t of draft) if (t.wants != null && !taken.has(t.wants)) { t.id = t.wants; taken.add(t.id); }
+    let next = 1;
+    for (const t of draft) {
+      if (t.id == null) { while (taken.has(next)) next++; t.id = next; taken.add(next); }
+      out.teams.push({ id: t.id, name: t.name, players: t.players });
     }
   }
 

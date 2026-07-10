@@ -214,9 +214,10 @@ function renderPhoneAlert() {
 
   const i = a.teamIdx;
   const t = (S.teams || [])[i];
-  // Their current name wins (they may have been renamed since the call); a.name is
-  // the fallback for a team that has since been removed.
-  const name = t ? teamLabel(t, i) : (a.name || "A team");
+  // Their current name wins (they may have been renamed since the call). For a team
+  // that has since been removed, fall back to what it was called then — a.label
+  // ("Team 3" when it never chose a name), which this private screen may show.
+  const name = t ? teamLabel(t, i) : (a.label || a.name || "A team");
   const players = t && t.players && t.players.length ? t.players.join(" · ") : "";
   el.innerHTML = `<div class="hp-phone">📞</div>
     <div class="hp-body">
