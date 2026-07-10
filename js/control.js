@@ -63,6 +63,26 @@ function applyFinalWager(teamIdx, wager) {
   if (!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) renderControl();
 }
 
+/* True when the display window we opened is right now in TRUE full screen. Same
+   origin, so we can just ask it. */
+function displayIsFullscreen() {
+  try { return !!(displayWin && !displayWin.closed && displayWin.fsElement && displayWin.fsElement()); }
+  catch (e) { return false; }   // window gone, or not a display document
+}
+/* ...and true when it's ALREADY full screen on the screen this deploy is aiming
+   at, so re-deploying there would only disturb it. Without a geom (a plain
+   "full screen on this screen") any screen it's on is the one we meant. Any doubt
+   answers false and the normal reopen path runs. */
+function displayIsFullscreenOn(geom) {
+  if (!displayIsFullscreen()) return false;
+  if (!geom || geom.left == null) return true;
+  try {
+    const x = displayWin.screenX, y = displayWin.screenY;   // a fullscreen window sits at its screen's origin
+    return x >= geom.left - 2 && x < geom.left + geom.width
+        && y >= geom.top - 2 && y < geom.top + geom.height;
+  } catch (e) { return false; }
+}
+
 /* Open (or reuse) the single display window. `geom` is an optional
    {left,top,width,height}; without it, a default 1280x720 popup. `wantFs` sets
    the fullscreen-intent flag so the window enters true fullscreen mode.
@@ -73,6 +93,14 @@ function applyFinalWager(teamIdx, wager) {
    existing window by name only changes the hash (no reload) and ignores the
    size/position, so we reposition it and force a reload to re-run that boot. */
 function openDisplayWindow(geom, wantFs) {
+  // Already full screen on the very screen this deploy is aiming at: leave the
+  // window completely alone. Reloading it (or moving it) drops it out of full
+  // screen, and the browser won't let a page back in without a fresh click on the
+  // TV — that's the stray extra tap. The stage and the whole game state it should
+  // be showing ride the normal broadcast instead. (Aiming at a DIFFERENT screen,
+  // or asking for a windowed display, still reopens it properly.)
+  if (wantFs && displayIsFullscreenOn(geom)) { send(); return displayWin; }
+
   const reuse = displayLooksOpen();
   const feat = (geom && geom.left != null)
     ? `left=${geom.left},top=${geom.top},width=${geom.width},height=${geom.height}`
@@ -83,6 +111,11 @@ function openDisplayWindow(geom, wantFs) {
   displayWin = window.open(url, "ppiJeopardyDisplay", feat);
   if (displayWin) {
     if (reuse) {
+      // Opening by name handed us back the SURVIVING display window — which is how
+      // we get a handle again after the control panel itself was reloaded (that
+      // reload dropped displayWin, so the guard above couldn't see it). Now that we
+      // can ask it, re-check: already full screen where we're aiming? Leave it be.
+      if (wantFs && displayIsFullscreenOn(geom)) { setTimeout(send, 600); return displayWin; }
       // Reused window: it only did a fragment change (no reload) and ignored the
       // size/position. Reposition it, point it at the new URL, then reload so the
       // boot code (fullscreen arming + the opening stage) actually runs again.
@@ -157,6 +190,53 @@ function externalScreenOf(sd) {
 /* Set the display curtain (black / title / game) and broadcast it. Collect any
    typed team names first so re-rendering the setup screen never wipes them. */
 function setStage(stage) { collectTeamNames(); update(() => { S.stage = stage; }); if (screensOv) renderScreensDialog(); }
+
+/* ---------------- automatic full screen (the "no extra tap" path) ----------------
+   No browser lets a page go full screen on its own — the display window normally
+   has to be clicked once. The ONE exception is Chrome/Edge 127+ when this
+   computer allow-lists the game's address for automatic full screen (the
+   AutomaticFullscreenAllowedForUrls policy). Then a full-screen deploy fills the
+   TV with no click at all.
+
+   The allow-list is per ADDRESS, so a copy of the game on the web and a copy
+   served over Wi-Fi by server.py are two different addresses and each needs its
+   own entry — which is why the same deploy can be one-click on one and
+   no-click on the other. We can read the setting, so the dialog can say which
+   mode the host is in and exactly how to switch it on. */
+let autoFsState = "unknown";   // "granted" | "denied" | "prompt" | "unknown" (browser can't tell us)
+function refreshAutoFsState() {
+  if (!navigator.permissions || !navigator.permissions.query) return Promise.resolve();
+  return navigator.permissions.query({ name: "fullscreen", allowWithoutGesture: true })
+    .then(p => {
+      autoFsState = p.state;
+      p.onchange = () => { autoFsState = p.state; if (screensOv) renderScreensDialog(); };
+    })
+    .catch(() => { autoFsState = "unknown"; });   // Safari/Firefox, or an older Chrome
+}
+
+/* localhost (and 127.0.0.1) are the only addresses a browser treats as trusted
+   without HTTPS. On a bare Wi-Fi address the browser switches off BOTH automatic
+   full screen and external-display placement — and the number can change when the
+   router restarts, which would silently invalidate the allow-list anyway. */
+function onLocalOrigin() { return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname); }
+
+/* Chrome and Edge each read their OWN preferences domain, so the command has to
+   name the browser the host is actually running the game in. */
+function browserName() { return /\bEdg\//.test(navigator.userAgent) ? "Edge" : "Chrome"; }
+function browserPrefDomain() { return browserName() === "Edge" ? "com.microsoft.Edge" : "com.google.Chrome"; }
+
+/* The one-time Terminal command that allow-lists this game's address. -array-add
+   (not -array) so an address already on the list — e.g. the copy on the web —
+   is kept. */
+function autoFsCommand() {
+  const seen = [], add = (o) => { if (o && seen.indexOf(o) === -1) seen.push(o); };
+  add(location.origin);
+  // Served by server.py: cover localhost whatever port it picked, so the game is
+  // ready even if the panel is reopened at the address it should be using.
+  if (onLocalOrigin() || netUrls()) { add("http://localhost"); add("http://127.0.0.1"); }
+  return `defaults write ${browserPrefDomain()} AutomaticFullscreenAllowedForUrls -array-add `
+    + seen.map(o => `"${o}"`).join(" ");
+}
 
 /* ---- LAN sync status (only meaningful when served by server.py) ----
    In the normal one-computer setup these return "" and the panel is unchanged.
@@ -269,6 +349,9 @@ function openScreensDialog() {
   screensOv.__keyHandler = (e) => { if (e.key === "Escape") closeScreensDialog(); };
   document.addEventListener("keydown", screensOv.__keyHandler);
   renderScreensDialog();
+  // Is this address allowed to go full screen with no click? (Re-read every open:
+  // the host may have just switched it on and relaunched the browser.)
+  refreshAutoFsState().then(() => { if (screensOv) renderScreensDialog(); });
   // A second screen is attached but we haven't asked for placement permission
   // yet — do it now while a click is active, so the external options light up.
   if (hasWindowMgmt() && extendedDisplayLikely() && !screenDetailsCache && !screensPermDenied) {
@@ -280,6 +363,45 @@ function closeScreensDialog() {
   document.removeEventListener("keydown", screensOv.__keyHandler);
   screensOv.remove();
   screensOv = null;
+}
+
+/* The automatic-full-screen status, and — when it's off — the one-time command
+   that switches it on for this address. */
+function autoFsHtml() {
+  if (autoFsState === "granted") {
+    return `<p class="screens-note">⚡️ <b>Automatic full screen is on for <code>${esc(location.origin)}</code>.</b>
+      A full-screen deploy fills the screen by itself — no click needed on the display window.</p>`;
+  }
+  const unknown = autoFsState === "unknown";
+  const b = browserName();
+  return `<div class="autofs">
+    <p class="screens-note">A browser won't go full screen by itself, so the display window shows a big
+      <b>“click for full screen”</b> prompt and the first click (or any key press) inside it fills the screen.</p>
+    <p class="screens-note"><b>To skip that click for good on this computer</b>${unknown ? " (needs Chrome or Edge, version 127+)" : ""}:
+      double-click <code>Automatic full screen (Mac).command</code> in the game folder, or paste this into
+      Terminal once. Then quit ${esc(b)} completely (⌘Q) and open it again.</p>
+    <div class="screens-cmd"><code id="autoFsCmd">${esc(autoFsCommand())}</code>
+      <button class="btn small" data-act="copy-autofs">Copy</button></div>
+    <p class="screens-note">It allow-lists <b>this exact address</b> (<code>${esc(location.origin)}</code>), which is
+      why a copy of the game on the web and this one over Wi-Fi each need their own entry. Check it took at
+      <code>${b === "Edge" ? "edge" : "chrome"}://policy</code>.</p>
+  </div>`;
+}
+
+/* Served over Wi-Fi but opened at the numeric address on THIS computer: browsers
+   treat that as untrusted, which switches off automatic full screen and
+   external-display placement. localhost is the same game, same server. */
+function localhostHintHtml() {
+  const u = netUrls();
+  if (!u || onLocalOrigin()) return "";
+  const local = "http://localhost:" + CHANNEL.net.info.port + "/";
+  return `<div class="screens-section">
+    <div class="sec-title">⚠️ Open this panel at localhost</div>
+    <p class="screens-note">You're running the control panel at <code>${esc(location.origin + "/")}</code>.
+      At a Wi-Fi address the browser turns off automatic full screen and automatic external-display
+      placement. On <b>this</b> computer open <a href="${esc(local)}">${esc(local)}</a> instead — it's the same
+      game and the same server, and the other devices keep using the Wi-Fi addresses.</p>
+  </div>`;
 }
 
 function renderScreensDialog() {
@@ -328,7 +450,8 @@ function renderScreensDialog() {
         <button class="btn" data-act="main-normal">Deploy on the main screen (normal window)</button>
         <button class="btn" data-act="main-split">Split: control panel + display side by side</button>
       </div>
-      <p class="screens-note">Use <b>full screen on this screen</b> when the board is on this computer's own display (or a TV plugged into it) — no second screen or “manage windows” permission needed. A browser can't go full screen by itself, so the display window shows a big <b>“click for full screen”</b> prompt: one click (or any key press) inside that window fills the screen.</p>
+      <p class="screens-note">Use <b>full screen on this screen</b> when the board is on this computer's own display (or a TV plugged into it) — no second screen or “manage windows” permission needed.</p>
+      ${autoFsHtml()}
     </div>`;
 
   const failHtml = `
@@ -358,6 +481,7 @@ function renderScreensDialog() {
         <span class="status-pill"><span class="dot ${displayOpen ? "on" : ""}"></span>${displayOpen ? "Display open" : "No display yet"}</span>
       </div>
       ${noChrome}${noExt}
+      ${localhostHintHtml()}
       ${netSection}
       ${externalHtml}
       ${mainHtml}
@@ -365,12 +489,30 @@ function renderScreensDialog() {
       <div class="modal-btns" style="margin-top:18px"><button class="btn" data-act="close">Close</button></div>
     </div>`;
 
-  screensOv.querySelectorAll("[data-act]").forEach(b => b.onclick = () => onScreensAct(b.dataset.act));
+  screensOv.querySelectorAll("[data-act]").forEach(b => b.onclick = () => onScreensAct(b.dataset.act, b));
 }
 
-function onScreensAct(act) {
+/* Copy the allow-list command to the clipboard, with a plain-textarea fallback
+   for the browsers/origins where the async clipboard API isn't available. */
+function copyAutoFsCommand(btn) {
+  const text = autoFsCommand();
+  const done = () => { if (btn) { btn.textContent = "Copied ✓"; setTimeout(() => { btn.textContent = "Copy"; }, 1600); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => legacyCopy(text, done));
+  } else legacyCopy(text, done);
+}
+function legacyCopy(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); done(); } catch (e) {}
+  ta.remove();
+}
+
+function onScreensAct(act, btn) {
   switch (act) {
     case "close":      closeScreensDialog(); break;
+    case "copy-autofs": copyAutoFsCommand(btn); break;
     case "grant":      ensureScreenDetails().then(() => { if (screensOv) renderScreensDialog(); }); break;
     case "ext-black":  deployExternal({ fullscreen: true,  stage: "black" }); break;
     case "ext-full":   deployExternal({ fullscreen: true,  stage: "game"  }); break;

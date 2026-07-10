@@ -20,6 +20,17 @@ function welcomeHtml() {
     <div class="welcome-sub">Get ready to play</div></div>`;
 }
 
+/* "Show scores on TV" and "Announce winner" lay a screen OVER the game and are
+   toggled straight back off again (the control panel remembers where to return
+   in S.prevView / S.winnerPrev). Coming back has to land exactly where the game
+   left off, so while one of these is up we FREEZE the one-shot animation
+   trackers below instead of overwriting them — otherwise the view underneath
+   looks brand new on the way back and replays its entrance animation (the Final
+   Jeopardy category flying in a second time, an answer re-popping, a standings
+   card re-flying). */
+const OVERLAY_VIEWS = ["bigscores", "winner"];
+function isOverlayView(v) { return OVERLAY_VIEWS.indexOf(v) !== -1; }
+
 /* Remembers which revealed answer is currently on screen, so the "pop"
    animation plays once on reveal and then holds static across re-renders
    (e.g. when the host edits a score while the answer is up). */
@@ -75,18 +86,23 @@ function renderDisplay() {
   const r = currentRound();
   let view = "";
 
+  // A screen laid over the game (scores / winner) must not disturb the trackers
+  // that say what the game underneath has already animated.
+  const overlayView = isOverlayView(S.view);
+
   // Animate the answer only when it FIRST appears for this clue.
   const answerKey = (S.view === "clue" && S.active && S.revealed) ? ("c" + S.active.cat + "," + S.active.row)
                   : (S.view === "final-clue" && S.finalRevealed) ? "final" : null;
   const animateAnswer = answerKey != null && answerKey !== lastAnswerKey;
-  lastAnswerKey = answerKey;
+  if (!overlayView) lastAnswerKey = answerKey;
   // Same first-appearance gating for the winner banner's pop.
   const animateWin = S.view === "winner" && !winnerShown;
   winnerShown = S.view === "winner";
   // True only on the first render of a newly-entered view, so the Final Jeopardy
   // entrance animations play once and then hold static across incidental
-  // re-renders (e.g. a score edit) instead of replaying every time.
-  const firstOfView = lastRenderedView !== S.view;
+  // re-renders (a score edit, or a trip out to the scores screen and back)
+  // instead of replaying every time.
+  const firstOfView = !overlayView && lastRenderedView !== S.view;
   // Places unveiled on the previous render of the standings — used so only the
   // just-revealed place animates in (older ones stay put).
   const prevFinalReveal = (lastRenderedView === "final-winner") ? lastFinalReveal : 0;
@@ -214,8 +230,12 @@ function renderDisplay() {
   runTimerBar();
   renderCurtain();
   applyBoardPending();                 // keep tiles hidden if a board rebuild lands mid-intro (no-op otherwise)
-  lastRenderedView = S.view;
-  lastFinalReveal = (S.view === "final-winner") ? (S.finalReveal || 0) : 0;
+  // Frozen while an overlay (scores / winner) is up, so dismissing it returns to
+  // the game exactly as it was rather than re-entering the view underneath.
+  if (!overlayView) {
+    lastRenderedView = S.view;
+    lastFinalReveal = (S.view === "final-winner") ? (S.finalReveal || 0) : 0;
+  }
   fitClue();                          // immediate best-effort (sizes text at full screen)
   if (flyFrom) startClueFly(flyFrom, flyBoardBg);   // ...then fly the sized clue in from the tile
   // Winner reveal: when exactly one new place was just unveiled, make that team's
@@ -231,9 +251,15 @@ function renderDisplay() {
       if (card) startWinnerHero(card);
     }
     // Winner crowned (every place shown): grow the champion, recede the rest.
-    // Added next frame so it transitions smoothly from the freshly-rendered state.
+    // When a place was JUST unveiled, add the class next frame so it transitions
+    // smoothly from the freshly-rendered state. Otherwise — an incidental
+    // re-render, a trip out to the scores screen, or a display reopened onto a
+    // finished game — add it before the first paint so the champion is simply
+    // already big, with no grow to watch a second time.
     if (revealed >= N && N > 0) {
-      requestAnimationFrame(() => { const s = document.querySelector(".fj-standings"); if (s) s.classList.add("crowned"); });
+      const crown = () => { const s = document.querySelector(".fj-standings"); if (s) s.classList.add("crowned"); };
+      if (!firstOfView && revealed > prevFinalReveal) requestAnimationFrame(crown);
+      else crown();
     }
   }
   requestAnimationFrame(fitClue);     // correct once layout/fonts have settled (skipped while flying)
@@ -707,19 +733,23 @@ function goFullscreen() {
     (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document);
   } else {
     fsWanted = true;    // toggling IN: keep it full screen (and restore it if it later drops out)
-    enterFullscreen();
+    enterFullscreen().catch(() => {});
   }
 }
 
 /* Enter only (never exit) — used by the auto-fullscreen path so a stray second
-   trigger can't bounce us back out. */
+   trigger can't bounce us back out. Resolves once the request is accepted and
+   REJECTS when the browser refuses it (no user gesture, and this address isn't
+   allow-listed for automatic fullscreen), which is how the callers below know
+   whether they still have to ask the host for a click. */
 function enterFullscreen() {
-  if (fsElement()) return;
+  if (fsElement()) return Promise.resolve();
   const el = document.documentElement;
   try {
-    if (el.requestFullscreen) { const p = el.requestFullscreen(); if (p && p.catch) p.catch(() => {}); }
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-  } catch (e) { /* blocked until a gesture — the prompt/handlers below handle that */ }
+    if (el.requestFullscreen) return Promise.resolve(el.requestFullscreen());
+    if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); return Promise.resolve(); }
+  } catch (e) { /* fall through to the rejection below */ }
+  return Promise.reject(new Error("fullscreen refused"));
 }
 
 /* The click/key that turns the "click for full screen" prompt into real fullscreen. */
@@ -727,7 +757,7 @@ function fsGo(e) {
   // ignore lone modifier keys so e.g. tabbing away doesn't count
   if (e && e.type === "keydown" && ["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) return;
   if (e) e.stopPropagation();            // don't also fire the ⛶ button / F toggle for this same event
-  enterFullscreen();                     // a real click/key is a valid gesture, so this takes
+  enterFullscreen().catch(() => {});     // a real click/key is a valid gesture, so this takes
 }
 /* Show the "click for full screen" prompt and listen for the gesture that fulfils it. */
 function showFsPrompt() {
@@ -745,25 +775,47 @@ function hideFsPrompt() {
   renderDisplay();
 }
 
+/* Decide, once a fullscreen attempt has settled, whether the host still has to
+   help: no prompt if we got there, the one-click prompt if we didn't. */
+function settleFsPrompt() {
+  if (fsElement()) hideFsPrompt(); else showFsPrompt();
+}
+
 /* Make a fullscreen deploy actually enter fullscreen MODE (not just fill the
    desktop). Chrome won't let a normal site force fullscreen with zero gesture,
-   so: (1) try immediately — succeeds only if the site is allow-listed via the
-   AutomaticFullscreenAllowedForUrls policy; (2) otherwise the FIRST click or
-   key anywhere in this window does it (a prompt says so). Broadened from just
-   "F" so the host doesn't have to know the shortcut. */
+   so: (1) try immediately — this succeeds with NO click when this computer's
+   browser allow-lists the game's address for automatic fullscreen (the
+   AutomaticFullscreenAllowedForUrls policy; see the Display setup dialog);
+   (2) otherwise the FIRST click or key anywhere in this window does it, and a
+   prompt says so. Broadened from just "F" so the host doesn't have to know the
+   shortcut.
+
+   The prompt is raised only once the no-click attempt has actually FAILED, so an
+   allow-listed machine never flashes "click this screen" over a window that is
+   already going full screen by itself. */
 function armAutoFullscreen() {
   fsWanted = true;
-  enterFullscreen();                     // zero-gesture best effort (works only if allow-listed)
-  showFsPrompt();                        // otherwise a click/key does it
+  if (fsElement()) return;               // already full screen — nothing to ask for
+  enterFullscreen().then(
+    () => setTimeout(settleFsPrompt, 250), // accepted — but confirm (webkitRequestFullscreen reports nothing)
+    () => showFsPrompt()                   // refused — a click/key is the only way in
+  );
+  setTimeout(settleFsPrompt, 700);         // belt and braces if the promise never settles
 }
 
 /* Auto-recover full screen. The browser drops HTML full screen whenever the TV
    window loses focus — most notably when the host clicks "Open host view (new
-   tab)", which pulls the browser's focus to the new tab. It can't be re-entered
-   without a gesture, so if we drop out while we still WANT full screen, re-offer
-   the one-click prompt: a single click (or key) on the TV puts it right back.
+   tab)", which pulls the browser's focus to the new tab.
+
+   If we drop out while we still WANT full screen: when the drop happened while
+   this window wasn't even focused it was the browser's doing, not the host's, so
+   try to slip straight back in — on an allow-listed machine that needs no click
+   at all. Anything else (the host pressing Esc, or the browser refusing) falls
+   back to the one-click prompt: a single click or key on the TV restores it.
    Entering full screen hides the prompt again. Wired up from main.js. */
 function onFullscreenChange() {
-  if (fsElement()) hideFsPrompt();
-  else if (fsWanted) showFsPrompt();
+  if (fsElement()) { hideFsPrompt(); return; }
+  if (!fsWanted) return;                 // the host toggled out on purpose — don't nag
+  if (document.hasFocus()) { showFsPrompt(); return; }   // Esc, most likely — let them be
+  enterFullscreen().then(() => setTimeout(settleFsPrompt, 250), () => showFsPrompt());
 }

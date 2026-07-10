@@ -326,7 +326,7 @@ body.display.is-fullscreen .fs-prompt { display: none; }
 .fj-intro-header { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); font-size: 4.4vw;
   letter-spacing: .18em; text-shadow: .05em .05em 0 #000, 0 0 5vmin rgba(255,204,0,.35); }
 .fj-instructions { margin-top: 4.5vh; font-family: Georgia, "Times New Roman", serif; color: #fff;
-  font-size: min(2.7vw, 4.6vh); line-height: 1.5; max-width: 82vw; text-shadow: .04em .04em 0 #000; }
+  font-size: min(3vw, 5.1vh); line-height: 1.5; max-width: 82vw; text-shadow: .04em .04em 0 #000; }
 .fj-getready { margin-top: 4vh; color: #cdd6ff; font-size: 2.4vw; letter-spacing: .2em; text-transform: uppercase; }
 .fj-intro-card.anim-cardin { animation: fjCardIn .8s cubic-bezier(.2,.8,.2,1) both; animation-delay: 1.95s; }
 @keyframes fjCardIn { 0% { opacity: 0; transform: translateY(5vh) scale(.85); filter: blur(6px); }
@@ -507,3 +507,10 @@ body.display.is-fullscreen .fs-prompt { display: none; }
 .screens-btns .btn { width: 100%; text-align: left; }
 .screens-note { font-size: 12.5px; color: var(--panel-dim); line-height: 1.55; margin-top: 8px; }
 .screens-note .btn.small { margin-top: 6px; }
+/* the one-time "automatic full screen" allow-list command, ready to copy */
+.autofs { margin-top: 10px; padding-top: 10px; border-top: 1px solid #3a3f58; }
+.screens-cmd { display: flex; align-items: center; gap: 10px; margin-top: 8px;
+  background: #12141f; border: 1px solid #3a3f58; border-radius: 8px; padding: 10px 12px; }
+.screens-cmd code { flex: 1; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
+  color: #e8eaf2; line-height: 1.5; word-break: break-all; user-select: all; }
+.screens-cmd .btn.small { margin-top: 0; flex: none; }

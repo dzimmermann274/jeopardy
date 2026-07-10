@@ -204,11 +204,14 @@ function contentHtml() {
   switch (S.view) {
     case "welcome":       return idleHtml(title, "Title screen is on the TV. Get ready…");
     case "board":         return idleHtml(title, "Board is up — waiting for a question to be picked.");
-    case "bigscores":     return scoresHtml("Current scores");
+    // Scores put on the TV mid-wagering shouldn't pull the host off the wager
+    // sheet — that's still the job in front of them.
+    case "bigscores":     return isWagerStage(S.prevView) ? wagerStageHtml(S.prevView, true)
+                                                          : scoresHtml("Current scores");
     case "winner":        return winnerHtml();
     case "final-winner":  return finalWinnerHtml();
-    case "final-intro":   return finalSimpleHtml();
-    case "final-category": return `<div class="fj-live">${finalSimpleHtml()}${hostWagerHtml()}</div>`;
+    case "final-intro":
+    case "final-category": return wagerStageHtml(S.view, false);
     case "final-clue":    return S.finalRevealed ? finalSimpleHtml()
                                  : `<div class="fj-live">${finalSimpleHtml()}${hostWagerHtml()}</div>`;
     case "clue":
@@ -260,6 +263,38 @@ function finalReadyHtml() {
   return `<div class="final-ready">
     <div class="fr-kicker">Get ready</div>
     <div class="fr-title">Ready for<br>Final Jeopardy!</div>
+  </div>`;
+}
+
+/* The stretch of Final Jeopardy BEFORE the question reaches the TV: while the
+   instructions are up, and while the category is up and teams are wagering. */
+function isWagerStage(view) { return view === "final-intro" || view === "final-category"; }
+
+/* What the host sees during that stretch. Their one job is collecting wagers, so
+   that is the only thing on this screen — the Final Jeopardy question and answer
+   stay hidden until the TV actually puts the question up, at which point the view
+   goes back to the normal Category / Question / Answer layout. */
+function wagerStageHtml(view, scoresOnTv) {
+  const f = S.game && S.game.final;
+  const onTv = scoresOnTv ? "The scores are on the TV"
+             : view === "final-intro" ? "The instructions are on the TV"
+             : "The category is on the TV";
+
+  if (view === "final-intro" || !f) {
+    return `<div class="final-ready wager-prep">
+      <div class="fr-kicker">${esc(onTv)}</div>
+      <div class="fr-title">Get ready to record<br>each team's wager.</div>
+      <div class="fr-note">The wagers are confidential.</div>
+    </div>`;
+  }
+  return `<div class="fj-live">
+    <div class="final-simple">
+      <div class="fs-banner">Final Jeopardy</div>
+      <div class="fs-row"><span class="fs-label">Category:</span> <span class="fs-val">${fmtText(f.category)}</span></div>
+      <div class="fr-note">${esc(onTv)}. Record each team's wager below — the wagers are confidential.
+        The question and answer stay hidden until the question is on the TV.</div>
+    </div>
+    ${hostWagerHtml()}
   </div>`;
 }
 
