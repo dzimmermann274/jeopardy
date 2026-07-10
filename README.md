@@ -72,11 +72,37 @@ Double`) is still auto-detected and supported.
 **fade to black**, and **show the game** as failsafes if anything looks wrong on the TV mid-game.
 Those same three failsafes are also duplicated as a bar directly on the control panel.
 
-**True fullscreen:** a fullscreen deploy fills the external screen and the display window enters
-real fullscreen mode on the **first click or key press** in it (browsers won't let a normal site
-force fullscreen with no gesture). With the black-first flow this is invisible — only black shows
-while it happens. To make it fully zero-touch, allow-list the site for automatic fullscreen via the
-Chrome `AutomaticFullscreenAllowedForUrls` policy; the window then goes fullscreen on its own.
+**True fullscreen:** a fullscreen deploy fills the screen, and the display window enters real
+fullscreen mode on the **first click or key press** in it — browsers won't let a normal site take
+over the screen with no gesture. With the black-first flow that click is invisible: only black is
+showing while it happens.
+
+**Skipping that click (zero-touch).** The one exception to the gesture rule is Chrome/Edge 127+
+allow-listing an address for *automatic fullscreen*, via the `AutomaticFullscreenAllowedForUrls`
+policy. **Double-click `Automatic full screen (Mac).command` once**, then quit the browser
+completely (⌘Q — closing the window is not enough) and reopen it. The Display setup dialog shows
+whether it's on and, if not, the exact one-line command to run. (On Windows the same policy lives in
+the registry under `HKLM\SOFTWARE\Policies\Google\Chrome\AutomaticFullscreenAllowedForUrls` and
+needs an administrator; without it, the one click is the floor there.) Verify either at
+`chrome://policy`. Safari and Firefox have no equivalent — they always need the click.
+
+The allow-list is **per address**, so each copy of the game needs its own entry: the one you
+publish on the web (`https://…github.io`) and the one `server.py` serves over Wi-Fi
+(`http://localhost:8123`) are two different addresses. That's why a deploy can be zero-click on one
+and still ask for a tap on the other. The `.command` file adds the local addresses without
+disturbing any you've already allowed.
+
+When the game is served by `server.py`, open the control panel on the host computer at
+**`http://localhost:8123`**, not at the `http://192.168.…` address. Browsers treat a bare Wi-Fi
+address as untrusted and switch off *both* automatic fullscreen and automatic external-display
+placement — and the number can change when the router restarts, which would silently invalidate the
+allow-list. Other devices still use the Wi-Fi addresses. (Double-clicking **Start Jeopardy** opens
+the right address for you.)
+
+Once the display is genuinely fullscreen it stays that way: re-deploying doesn't reload it out of
+fullscreen, and if the browser drops fullscreen because focus moved elsewhere (opening the Host
+View does this), the display puts itself back — silently on an allow-listed machine, otherwise with
+the one-click prompt. Pressing **Esc** or **F** in the display window still exits for good.
 
 Use **Show categories** (top of the control panel) at the start to play a full-screen
 animation that reveals each of the day's categories to the players. After it plays once the

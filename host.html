@@ -175,6 +175,11 @@
   .final-ready { width: 100%; text-align: center; }
   .fr-kicker { font-size: clamp(15px, 2.2vw, 26px); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
   .fr-title { font-size: clamp(44px, 9vw, 122px); font-weight: 900; line-height: 1.04; color: var(--gold); text-shadow: 0 3px 0 rgba(0,0,0,.25); }
+  /* the wager-collecting stretch: a whole sentence, so a size down from "Ready for Final Jeopardy!" */
+  .wager-prep .fr-title { font-size: clamp(32px, 5.6vw, 76px); }
+  .fr-note { margin-top: clamp(16px, 3vh, 30px); font-size: clamp(16px, 2.1vw, 26px); line-height: 1.45;
+             font-weight: 700; color: var(--muted); }
+  .final-simple .fr-note { margin-top: clamp(14px, 2.4vh, 26px); font-weight: 600; }
 
   .final-simple { width: 100%; }
   .fs-banner {
@@ -437,7 +442,7 @@
   <!-- full-screen category-reveal takeover, synced to the TV (js/host.js) -->
   <div id="host-catintro" hidden></div>
   <!-- bump ?v= on every deploy so browsers never run stale cached JS -->
-  <script src="js/bus.js?v=40"></script>
-  <script src="js/host.js?v=40"></script>
+  <script src="js/bus.js?v=42"></script>
+  <script src="js/host.js?v=42"></script>
 </body>
 </html>
