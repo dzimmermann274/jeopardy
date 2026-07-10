@@ -12,8 +12,9 @@
        tab produces NO category — the game mirrors the sheet;
      • a "Daily Double" label followed by a dollar amount marks
        that level as the Daily Double;
-     • the Game Setup tab supplies the game title, team names,
-       players per team, and an optional Final Jeopardy.
+     • the Game Setup tab supplies the game title, the house rules
+       (cell D7), the numbered teams, players per team, and an
+       optional Final Jeopardy.
 
    LEGACY FORMAT (still supported): one tab with header row
    Round | Category | Value | Clue | Answer | Daily Double.
@@ -21,7 +22,9 @@
    A game object:
    { title, rounds: [{ name, categories: [{ name, clues: [{value, clue, answer, dd, used}] }] }],
      final: {category, clue, answer, unknown, instructions} | null,
-     teams: [{name, players: []}] }          // suggested teams from the sheet
+     rules: "",                              // the Rules screen's text (## = new line)
+     teams: [{id, name, players: []}] }      // teams from the sheet; `name` is blank
+                                             // when the sheet only gave a number (see below)
    ============================================================ */
 
 function parseCSV(text) {
@@ -255,10 +258,16 @@ function cellText(ws, addr) {
   return v != null ? String(v).trim() : "";
 }
 
-/* The Game Setup tab -> { title, subtitle, categoryNames, teams, final }. */
+/* A team cell that's just a number ("3") or the stock "Team 3" is an ID, not a
+   name — the group's handle on the sheet. The players choose their real name
+   during the game and the host types it into the control panel, so a placeholder
+   like "Team 3" can never end up on the TV. Anything else is a genuine name. */
+const TEAM_ID_CELL = /^(?:team\s*)?(\d{1,2})$/i;
+
+/* The Game Setup tab -> { title, subtitle, rules, categoryNames, teams, final }. */
 function parseSetupTab(ws) {
   const rows = sheetRows(ws);
-  const out = { title: "", subtitle: "", categoryNames: [], teams: [], final: null };
+  const out = { title: "", subtitle: "", rules: "", categoryNames: [], teams: [], final: null };
 
   const findValue = (re) => {
     for (const r of rows) {
@@ -285,20 +294,28 @@ function parseSetupTab(ws) {
   // named from a cell (where apostrophes etc. survive) instead of the tab name.
   out.categoryNames = ["E4", "F4", "G4", "H4", "I4", "J4"].map(a => cellText(ws, a));
 
+  // The house rules shown on the Rules screen live in a dedicated cell — Game
+  // Setup D7. Read it directly by address, like C5/E4/D18, since sheet_to_json
+  // indexes relative to the used range and can't reliably hit a fixed cell.
+  out.rules = cellText(ws, "D7");
+
   const teamHeaderIdx = rows.findIndex(r => r.some(c => /team\s*name/i.test(c)));
   if (teamHeaderIdx !== -1) {
     const header = rows[teamHeaderIdx];
-    const nameCol = header.findIndex(c => /team\s*name/i.test(c));
+    const idCol = header.findIndex(c => /team\s*name/i.test(c));
     const playerCol = header.findIndex(c => /player/i.test(c));
     for (let i = teamHeaderIdx + 1; i < rows.length; i++) {
       const r = rows[i];
       if (r.some(c => /final\s*jeopardy/i.test(c))) break;   // reached the Final section
-      const name = (r[nameCol] || "").trim();
-      if (!name) continue;
+      const cell = (r[idCol] || "").trim();
+      if (!cell) continue;                                   // blank row -> no team
       const players = playerCol !== -1
         ? (r[playerCol] || "").split(/[,;]/).map(p => p.trim()).filter(Boolean)
         : [];
-      out.teams.push({ name, players });
+      const m = cell.match(TEAM_ID_CELL);
+      out.teams.push(m
+        ? { id: +m[1], name: "", players }                   // just an ID: named live, on the panel
+        : { id: out.teams.length + 1, name: cell, players }); // a real name written into the sheet
     }
   }
 
@@ -356,6 +373,7 @@ function buildGameFromWorkbook(wb) {
     return {
       title: (setup && setup.title) || "Jeopardy!",
       subtitle: (setup && setup.subtitle) || "",
+      rules: (setup && setup.rules) || "",
       rounds: [{ name: "Jeopardy!", categories }],
       final: (setup && setup.final) || null,
       teams: (setup && setup.teams) || [],
@@ -441,7 +459,7 @@ function buildGameFromRows(rows) {
     return { name: label, categories };
   });
   if (!rounds.length) throw new Error("The sheet only has a Final Jeopardy row — add regular question rows too.");
-  return { title: "Custom Game", subtitle: "", rounds, final, teams: [] };
+  return { title: "Custom Game", subtitle: "", rules: "", rounds, final, teams: [] };
 }
 
 /* ---------------- fetching ---------------- */

@@ -185,21 +185,73 @@ function netDevicesHtml() {
   </div>`;
 }
 
-/* A compact copy of the fade failsafes, shown directly on the control panel (in
-   addition to the Display setup dialog) so they're always one click away. */
-function failsafeBarHtml() {
+/* Every screen the TV can be put on, one click away — the fades (also in the
+   Display setup dialog) plus the three pre-game screens. Whichever is up is
+   highlighted, so the bar doubles as "what is on the TV right now?". */
+function screensBarHtml() {
   const open = displayLooksOpen();
   const stage = S.stage || "game";
+  const lit = (s) => stage === s ? "gold" : "";
+  const off = open ? "" : "disabled";
   return `<div class="failsafe-bar">
-    <span class="failsafe-label">Display failsafes</span>
-    <button class="btn small ${stage === "title" ? "gold" : ""}" data-stage="title" ${open ? "" : "disabled"}>Fade to title</button>
-    <button class="btn small ${stage === "black" ? "gold" : ""}" data-stage="black" ${open ? "" : "disabled"}>Fade to black</button>
-    <button class="btn small ${stage === "game" ? "primary" : ""}" data-stage="game" ${open ? "" : "disabled"}>Show the game</button>
+    <span class="failsafe-label">TV screens</span>
+    <button class="btn small ${lit("title")}" data-stage="title" ${off}>Title</button>
+    <button class="btn small ${lit("rules")}" data-stage="rules" ${off}>Rules</button>
+    <button class="btn small ${lit("teams")}" data-stage="teams" ${off}>Show teams</button>
+    <button class="btn small ${lit("picks")}" id="btnPicksFirst" ${off}>Show who picks first</button>
+    <button class="btn small ${lit("black")}" data-stage="black" ${off}>Black</button>
+    <button class="btn small ${stage === "game" ? "primary" : ""}" data-stage="game" ${off}>Show the game</button>
     ${open ? "" : `<span class="hint" style="margin-left:2px">open a display first</span>`}
   </div>`;
 }
-function wireFailsafeBar() {
+function wireScreensBar() {
   app.querySelectorAll("[data-stage]").forEach(b => b.onclick = () => setStage(b.dataset.stage));
+  const p = document.getElementById("btnPicksFirst");
+  if (p) p.onclick = showWhoPicksFirst;
+}
+
+/* Put the picking order on the TV. The order is DRAWN ONCE — the first time this
+   is used — and then rotates one team per clue, so coming back to this screen
+   mid-game shows the running order rather than silently re-shuffling it. */
+function showWhoPicksFirst() {
+  collectTeamNames();
+  if (!S.teams.length) { customAlert("Add some teams first."); return; }
+  const show = () => {
+    update(() => {
+      if (!pickOrderValid(S)) { S.pickOrder = shuffledOrder(S.teams.length); S.pickIdx = 0; }
+      S.stage = "picks";
+    });
+    if (screensOv) renderScreensDialog();
+  };
+  // The TV never prints a team's ID, so an unnamed team appears as a blank line
+  // here. Say so before it happens rather than after.
+  const unnamed = S.teams.filter(t => !teamNamed(t)).length;
+  if (unnamed) {
+    customConfirm(`${unnamed} team${unnamed > 1 ? "s haven't" : " hasn't"} chosen a name yet, so the TV will show a blank. Show the picking order anyway?`,
+      { okText: "Show it anyway" }).then(ok => { if (ok) show(); });
+    return;
+  }
+  show();
+}
+
+/* Draw a brand-new order. Separate from the button above precisely because that
+   one must be safe to press twice. */
+function reshufflePickOrder() {
+  collectTeamNames();
+  if (!S.teams.length) return;
+  customConfirm("Draw a brand-new picking order? Whose turn it is resets to the top of the new order.",
+    { okText: "Shuffle again" }).then(ok => {
+    if (!ok) return;
+    update(() => { S.pickOrder = shuffledOrder(S.teams.length); S.pickIdx = 0; });
+  });
+}
+
+/* Step the rotation. Called with +1 when a clue is put away (the turn passes) and
+   from the ◀ / ▶ buttons when the host needs to correct it. */
+function stepPicker(delta) {
+  if (!pickOrderValid(S)) return;
+  const n = S.pickOrder.length;
+  S.pickIdx = (((S.pickIdx + delta) % n) + n) % n;
 }
 
 /* Deploy the game onto the external display. `stage` is the curtain the new
@@ -590,25 +642,35 @@ function renderControl() {
   syncTimerAudio();
 }
 
-/* Read the team-name inputs on the setup screen back into S.teams. Safe to call
-   anytime — a no-op when those inputs aren't on screen (e.g. during play), so
-   the deploy/curtain actions can call it before re-rendering without harm. */
+/* Read the team-name inputs back into S.teams. Safe to call anytime — a no-op
+   when those inputs aren't on screen, so the deploy/curtain actions can call it
+   before re-rendering without harm.
+
+   An empty box stays EMPTY. It must not become "Team 1": that is the sheet's ID
+   for the group, and the TV never shows an ID. The team is simply unnamed until
+   its players choose a name off the "Show teams" screen and the host types it in. */
 function collectTeamNames() {
   const inputs = app.querySelectorAll("[data-team]");
   if (!inputs.length) return;
   S.teams = [...inputs].map(inp => {
     const idx = +inp.dataset.team;
+    const prev = S.teams[idx];
     return {
-      name: inp.value.trim() || "Team " + (idx + 1),
-      players: (S.teams[idx] && S.teams[idx].players) || [],
-      score: (S.teams[idx] ? S.teams[idx].score : 0),
+      id: (prev && prev.id != null) ? prev.id : idx + 1,
+      name: inp.value.trim(),
+      players: (prev && prev.players) || [],
+      score: prev ? prev.score : 0,
     };
   });
 }
 
+/* The next free team ID, so "+ Add team" never reuses one that's already taken. */
+function nextTeamId() { return S.teams.reduce((m, t) => Math.max(m, t.id || 0), 0) + 1; }
+
 /* ---------------- setup screen ---------------- */
 function renderSetup() {
-  const teamsDraft = S.teams.length ? S.teams : [{ name: "Team 1", score: 0 }, { name: "Team 2", score: 0 }, { name: "Team 3", score: 0 }];
+  const teamsDraft = S.teams.length ? S.teams
+    : [{ id: 1, name: "", score: 0 }, { id: 2, name: "", score: 0 }, { id: 3, name: "", score: 0 }];
   const savedGame = loadSavedGame();
   app.innerHTML = `
   <div class="ctl-wrap">
@@ -645,7 +707,8 @@ function renderSetup() {
       ${sheetError ? `<div class="setup-err">⚠️ ${esc(sheetError)}</div>` : ""}
       ${S.game ? `<div class="setup-note">✅ Loaded: <b>${esc(S.game.title)}</b> —
           ${S.game.rounds.map(r => `${r.categories.length} categories / ${r.categories.reduce((n, c) => n + c.clues.length, 0)} questions`).join(", ")}
-          ${S.game.final ? " + Final Jeopardy" : ""}${S.game.teams && S.game.teams.length ? `, teams: ${S.game.teams.map(t => esc(t.name)).join(", ")}` : ""}.
+          ${S.game.final ? " + Final Jeopardy" : ""}${S.game.teams && S.game.teams.length ? `, ${S.game.teams.length} teams` : ""},
+          ${S.game.rules ? "rules ✓" : "<b>no rules</b> (cell D7 of ⚙️ Game Setup is empty)"}.
           <b>Answers stay hidden from this screen until you reveal them on the display.</b></div>` : ""}
       ${S.game && S.game.warnings && S.game.warnings.length ? `<div class="setup-err">⚠️ Heads up:<br>${S.game.warnings.map(esc).join("<br>")}</div>` : ""}
       <details>
@@ -659,7 +722,7 @@ function renderSetup() {
           • Optional pictures: paste links in the <b>🖼 Image Bank</b>, then put the Image ID next to a question.<br>
           • Every colored tab = one category; <b>rename the tab</b> to name the category, then just type Question IDs next to the dollar amounts — the rest fills in automatically.<br>
           • Blank row = that tile won't appear; untouched tab = that category won't appear.<br>
-          • The ⚙️ Game Setup tab holds the game title, team names, players, and an optional Final Jeopardy.<br>
+          • The ⚙️ Game Setup tab holds the game title, the <b>rules</b> (cell D7), the numbered teams, players, and an optional Final Jeopardy.<br>
           • When done: <b>Share → Anyone with the link → Viewer</b>, copy the link, send it to you. You paste it above — <b>never open the sheet yourself!</b></p>
         </div>
       </details>
@@ -667,10 +730,14 @@ function renderSetup() {
 
     <div class="card">
       <h2>Step 2 — Teams</h2>
+      <p class="hint">The sheet only numbers the teams — that number is their ID and never reaches the TV.
+        Put <b>Show teams</b> on the TV, let each group pick a name, then type the names here. Leave a box empty
+        until they've decided.</p>
       <div id="teamSetup">
         ${teamsDraft.map((t, i) => `
-          <div class="field-row">
-            <input type="text" data-team="${i}" value="${esc(t.name)}" placeholder="Team name">
+          <div class="field-row team-row">
+            <span class="team-id">Team ${teamIdOf(t, i)}</span>
+            <input type="text" data-team="${i}" value="${esc(t.name || "")}" placeholder="Team name — they choose this">
             <button class="btn small" data-delteam="${i}">Remove</button>
           </div>
           ${t.players && t.players.length ? `<p class="hint" style="margin:-4px 0 8px 4px">👥 ${esc(t.players.join(", "))} <span style="opacity:.7">(from the sheet — edit players there)</span></p>` : ""}`).join("")}
@@ -683,12 +750,14 @@ function renderSetup() {
       <p class="hint">Use <b>Display setup</b> for one-click options — deploy straight onto an external display,
       the safe black-screen-first flow, a split view, and the fade failsafes. Or open a plain window and drag it
       onto the TV yourself, then press <b>F</b> (or click ⛶) to go fullscreen.</p>
+      <p class="hint" style="margin-top:8px">Then walk the TV through the openers: <b>Title</b> → <b>Rules</b> →
+      <b>Show teams</b> (they pick their names, you type them into Step 2) → <b>Show who picks first</b> → start the game.</p>
       <div class="field-row" style="margin-top:12px">
         <button class="btn" id="btnScreens">Display setup</button>
         <button class="btn" id="btnOpenDisplay">Open display window</button>
         <button class="btn primary" id="btnStart" ${S.game ? "" : "disabled"}>Start the game ▶</button>
       </div>
-      ${failsafeBarHtml()}
+      ${screensBarHtml()}
       ${netDevicesHtml()}
       ${S.game ? "" : `<p class="hint">Load questions first to enable Start.</p>`}
     </div>
@@ -706,7 +775,11 @@ function renderSetup() {
     sheetError = "";
     collectTeamNames();
     ++sheetReqToken;               // invalidate any in-flight sheet load
-    update(() => { S.game = JSON.parse(JSON.stringify(SAMPLE_GAME)); });
+    update(() => {
+      S.game = JSON.parse(JSON.stringify(SAMPLE_GAME));
+      S.teams = S.game.teams.map(t => ({ id: t.id, name: t.name, players: t.players || [], score: 0 }));
+      S.pickOrder = []; S.pickIdx = 0;   // a different team list invalidates any drawn order
+    });
   };
   document.getElementById("sheetUrl").oninput = (e) => { sheetUrlDraft = e.target.value; };
   document.getElementById("btnLoadSheet").onclick = async () => {
@@ -721,38 +794,83 @@ function renderSetup() {
       sheetBusy = false;
       update(() => {
         S.game = game;
-        // the sheet's Game Setup tab wins: prefill teams (still editable below)
+        // the sheet's Game Setup tab wins: prefill the teams with their IDs and
+        // players. Names stay blank — the players haven't chosen them yet.
         if (game.teams && game.teams.length) {
-          S.teams = game.teams.map(t => ({ name: t.name, players: t.players || [], score: 0 }));
+          S.teams = game.teams.map(t => ({ id: t.id, name: t.name, players: t.players || [], score: 0 }));
         }
+        S.pickOrder = []; S.pickIdx = 0;   // a different team list invalidates any drawn order
       });
     } catch (e) {
       if (tok !== sheetReqToken || S.phase !== "setup") return;
       sheetBusy = false; sheetError = e.message; renderControl();
     }
   };
+  /* Type a name, see it land on the TV. While the "Show teams" screen is up the
+     host is typing the names the room just shouted out, and the blank next to that
+     group should fill in as they do. send() (not update()) broadcasts WITHOUT
+     re-rendering this panel, so the caret never jumps out of the box. */
+  app.querySelectorAll("[data-team]").forEach(inp => {
+    inp.oninput = () => { collectTeamNames(); send(); };
+  });
   document.getElementById("btnAddTeam").onclick = () => {
     collectTeamNames();
-    update(() => { S.teams.push({ name: "Team " + (S.teams.length + 1), score: 0 }); });
+    update(() => { S.teams.push({ id: nextTeamId(), name: "", players: [], score: 0 }); S.pickOrder = []; S.pickIdx = 0; });
   };
   app.querySelectorAll("[data-delteam]").forEach(b => b.onclick = () => {
     collectTeamNames();
     const i = +b.dataset.delteam;
-    update(() => { S.teams.splice(i, 1); });
+    // Removing a team renumbers every index after it, so any drawn picking order
+    // is now meaningless — throw it away rather than leave it pointing at the wrong team.
+    update(() => { S.teams.splice(i, 1); S.pickOrder = []; S.pickIdx = 0; });
   });
   document.getElementById("btnScreens").onclick = () => { collectTeamNames(); openScreensDialog(); };
   document.getElementById("btnOpenDisplay").onclick = () => { collectTeamNames(); openDisplay(); renderControl(); };
-  wireFailsafeBar();
+  wireScreensBar();
   document.getElementById("btnStart").onclick = () => {
     collectTeamNames();
-    ++sheetReqToken;               // a game is starting; drop any pending sheet load
-    finalWagerDrafts = null;
-    update(() => {
-      if (!S.teams.length) S.teams = [{ name: "Team 1", players: [], score: 0 }, { name: "Team 2", players: [], score: 0 }];
-      S.phase = "play"; S.view = "board"; S.roundIdx = 0;
-      S.finalWagers = S.teams.map(() => 0);
-    });
+    const begin = () => {
+      ++sheetReqToken;               // a game is starting; drop any pending sheet load
+      finalWagerDrafts = null;
+      update(() => {
+        if (!S.teams.length) S.teams = [{ id: 1, name: "", players: [], score: 0 }, { id: 2, name: "", players: [], score: 0 }];
+        S.phase = "play"; S.view = "board"; S.roundIdx = 0;
+        S.finalWagers = S.teams.map(() => 0);
+      });
+    };
+    // An unnamed team shows as a blank on the TV scoreboard (never its ID), so
+    // check before the board goes up. They can still be named later, from Scores.
+    const unnamed = S.teams.filter(t => !teamNamed(t)).length;
+    if (unnamed) {
+      customConfirm(`${unnamed} team${unnamed > 1 ? "s haven't" : " hasn't"} got a name yet — the TV scoreboard will show a blank. You can name them any time from the Scores card. Start anyway?`,
+        { okText: "Start anyway" }).then(ok => { if (ok) begin(); });
+      return;
+    }
+    begin();
   };
+}
+
+/* Whose turn it is to pick, and the rotation it came from. Sits above the score
+   cards. The ◀ / ▶ buttons are an escape hatch: the turn passes by itself each
+   time a clue is put away, but a mis-click shouldn't leave the host stuck. */
+function turnBarHtml() {
+  if (!S.teams.length) return "";
+  if (!pickOrderValid(S)) {
+    return `<div class="turn-bar">
+      <span class="turn-label">Picking order</span>
+      <span class="hint">Not drawn yet — click <b>Show who picks first</b> in the TV screens bar above.</span>
+    </div>`;
+  }
+  const p = currentPicker(S);
+  const order = S.pickOrder.map((ti, k) => `${k + 1}. ${esc(teamLabel(S.teams[ti], ti))}`).join(" · ");
+  return `<div class="turn-bar">
+    <span class="turn-label">Picking now</span>
+    <span class="turn-now">${esc(teamLabel(S.teams[p], p))}</span>
+    <button class="btn small" id="btnPickPrev" title="Back one turn">◀</button>
+    <button class="btn small" id="btnPickNext" title="Forward one turn">▶</button>
+    <button class="btn small" id="btnPickShuffle" title="Draw a brand-new order">Reshuffle</button>
+    <span class="hint turn-order">${order}</span>
+  </div>`;
 }
 
 /* ---------------- play screen ---------------- */
@@ -766,12 +884,14 @@ function renderPlay() {
     || S.view === "final-winner";
   const isWinner = S.view === "winner";
 
+  const picker = currentPicker(S);   // -1 until "Show who picks first" draws the order
+
   let mainHtml = "";
   if (isWinner) {
     const champs = winnersOf(S.teams);
     const tie = champs.length > 1;
     mainHtml = `<div class="card"><h2>🏆 ${tie ? "It's a tie — on the TV now" : "Winner — on the TV now"}</h2>
-      <p class="hint">${tie ? "Tied at the top: " : "Champion: "}<b>${champs.map(t => esc(t.name)).join(", ")}</b> with ${money(champs.length ? champs[0].score : 0)}.
+      <p class="hint">${tie ? "Tied at the top: " : "Champion: "}<b>${champs.map(t => esc(teamLabel(t, S.teams.indexOf(t)))).join(", ")}</b> with ${money(champs.length ? champs[0].score : 0)}.
       Click "◀ Back to game" above to keep playing, or "⟲ New game" to start over.</p></div>`;
   }
   else if (isFinal) mainHtml = finalControlHtml();
@@ -800,21 +920,29 @@ function renderPlay() {
       </div>
     </div>
     ${otherControlBannerHtml()}
-    ${failsafeBarHtml()}
+    ${screensBarHtml()}
     ${mainHtml}
     <div class="card">
       <h2>Scores</h2>
+      ${turnBarHtml()}
       <div class="teams-grid">
-        ${S.teams.map((t, i) => `
-          <div class="team-card">
-            <div class="tname">${esc(t.name)}</div>
+        ${S.teams.map((t, i) => {
+          const phoned = !!(S.phones && S.phones[i]);
+          return `
+          <div class="team-card${i === picker ? " is-picking" : ""}">
+            <div class="tname">${esc(teamLabel(t, i))}${teamNamed(t) ? "" : ` <span class="tname-unset">no name yet</span>`}</div>
             <div class="tscore ${t.score < 0 ? "neg" : ""}">${money(t.score)}</div>
             <div class="team-controls">
               <button class="btn small" data-adj="${i}:100">+100</button>
               <button class="btn small" data-adj="${i}:-100">−100</button>
               <button class="btn small" data-editscore="${i}">Set…</button>
+              <button class="btn small" data-rename="${i}">Name…</button>
             </div>
-          </div>`).join("")}
+            <button class="btn small phone-btn ${phoned ? "is-done" : ""}" data-phone="${i}"
+              title="${phoned ? "Already used their one call — click to show it again" : "Announce that this team has phoned grandma"}">
+              📞 ${phoned ? "Phoned ✓" : "Phone grandma"}</button>
+          </div>`;
+        }).join("")}
       </div>
     </div>
 
@@ -838,7 +966,7 @@ function renderPlay() {
 
   document.getElementById("btnReopenDisplay").onclick = () => { openDisplay(); renderControl(); };
   document.getElementById("btnScreens").onclick = () => openScreensDialog();
-  wireFailsafeBar();
+  wireScreensBar();
   const bCats = document.getElementById("btnShowCats");
   if (bCats) bCats.onclick = () => {
     if (!categoriesShown) return showCategories();
@@ -913,10 +1041,45 @@ function renderPlay() {
   });
   app.querySelectorAll("[data-editscore]").forEach(b => b.onclick = () => {
     const i = +b.dataset.editscore;
-    customPrompt("New score for " + S.teams[i].name + ":", String(S.teams[i].score)).then(v => {
+    customPrompt("New score for " + teamLabel(S.teams[i], i) + ":", String(S.teams[i].score)).then(v => {
       if (v !== null && v.trim() !== "" && !isNaN(+v)) update(() => { S.teams[i].score = Math.round(+v); });
     });
   });
+  /* Name a team mid-game — the box on the setup screen is gone by now, but the
+     players may only have settled on a name after the game was already rolling. */
+  app.querySelectorAll("[data-rename]").forEach(b => b.onclick = () => {
+    const i = +b.dataset.rename;
+    customPrompt("Team name for " + teamLabel(S.teams[i], i) + ":", S.teams[i].name || "").then(v => {
+      if (v === null) return;
+      update(() => { S.teams[i].name = v.trim(); });
+    });
+  });
+  /* 📞 Phone grandma. One call per team; pressing it again asks first, because the
+     only reason to do so is that the banner was missed, not that they get another. */
+  app.querySelectorAll("[data-phone]").forEach(b => b.onclick = () => {
+    const i = +b.dataset.phone;
+    const t = S.teams[i];
+    if (!t) return;
+    const label = teamLabel(t, i);
+    const announce = () => update(() => {
+      S.phones[i] = true;
+      // Snapshot the name too: it's the fallback if this team is later removed.
+      S.phoneAlert = { teamIdx: i, name: dispTeamName(t) || label, ts: Date.now() };
+    });
+    if (S.phones && S.phones[i]) {
+      customConfirm(`${label} has already phoned grandma — each team only gets one call. Show the notification again anyway?`,
+        { okText: "Show it again" }).then(ok => { if (ok) announce(); });
+      return;
+    }
+    announce();
+  });
+  /* Correct the rotation by hand, or draw a whole new one. */
+  const bPrev = document.getElementById("btnPickPrev");
+  if (bPrev) bPrev.onclick = () => update(() => stepPicker(-1));
+  const bNext = document.getElementById("btnPickNext");
+  if (bNext) bNext.onclick = () => update(() => stepPicker(1));
+  const bShuf = document.getElementById("btnPickShuffle");
+  if (bShuf) bShuf.onclick = reshufflePickOrder;
 
   /* Host view: open the passive screen, and send/clear the "Note from Danny". */
   const bOpenHostView = document.getElementById("btnOpenHostView");
@@ -969,6 +1132,7 @@ function renderPlay() {
       update(() => {
         const c = activeClue(); if (c) c.used = true;
         S.view = "board"; S.active = null; S.revealed = false; S.dd = null; S.awarded = {}; S.timer = null; S.photoZoom = false;
+        stepPicker(1);   // that clue is done — the pick passes to the next team in the rotation
       });
     };
     /* live-typed answers (UNKNOWN questions, or overriding a preset one) */
@@ -1199,7 +1363,7 @@ function clueControlHtml(cl, isDD) {
       <p class="hint">The splash is on the TV. Pick which team found it and their wager, then show the clue.</p>
       <div class="field-row" style="align-items:center">
         <select id="ddTeam">
-          ${S.teams.map((t, i) => `<option value="${i}" ${i === ddDraft.team ? "selected" : ""}>${esc(t.name)}</option>`).join("")}
+          ${S.teams.map((t, i) => `<option value="${i}" ${i === ddDraft.team ? "selected" : ""}>${esc(teamLabel(t, i))}</option>`).join("")}
         </select>
         <input type="number" id="ddWager" class="wager-input" placeholder="Wager ($)" min="0" step="100" value="${esc(ddDraft.wager)}">
         <button class="btn primary" id="btnDDGo">Show the clue ▶</button>
@@ -1258,7 +1422,7 @@ function clueControlHtml(cl, isDD) {
     ${S.revealed ? `
     <h2 style="margin-top:16px">Award points ${ddTeam ? "(wager: " + money(amount) + ")" : "(" + money(amount) + ")"}</h2>
     ${(ddTeam ? [S.dd.teamIdx] : S.teams.map((_, i) => i)).map((i) =>
-      awardRowHtml(i, S.teams[i].name, amount, S.awarded[i])
+      awardRowHtml(i, teamLabel(S.teams[i], i), amount, S.awarded[i])
     ).join("")}` : ""}
   </div>`;
 }
@@ -1272,13 +1436,13 @@ function finalScoreRowsHtml() {
     if (S.finalAwarded[i]) {
       const applied = S.finalAwarded[i] === "+" ? `+${money(w)}` : `−${money(w)}`;
       return `<div class="award-row">
-        <span class="aw-name">${esc(t.name)} — wagered ${money(w)}</span>
+        <span class="aw-name">${esc(teamLabel(t, i))} — wagered ${money(w)}</span>
         <span class="hint">${S.finalAwarded[i] === "+" ? "✓ scored " : "✗ scored "}${applied}</span>
         <button class="btn small" data-funaward="${i}">Undo</button>
       </div>`;
     }
     return `<div class="award-row">
-      <span class="aw-name">${esc(t.name)} — wagered ${money(w)}</span>
+      <span class="aw-name">${esc(teamLabel(t, i))} — wagered ${money(w)}</span>
       <button class="btn good small" data-faward="${i}:+">✓ Right</button>
       <button class="btn bad small" data-faward="${i}:-">✗ Wrong</button>
     </div>`;
@@ -1311,7 +1475,7 @@ function finalControlHtml() {
       If you're playing, have someone else check that wagers don't exceed scores!</p>
       ${S.teams.map((t, i) => `
         <div class="award-row">
-          <span class="aw-name">${esc(t.name)} (${money(t.score)})</span>
+          <span class="aw-name">${esc(teamLabel(t, i))} (${money(t.score)})</span>
           <input type="number" data-fwager="${i}" min="0" step="100" placeholder="Wager ($)"
             value="${esc(finalWagerDrafts[i])}">
         </div>`).join("")}
@@ -1383,7 +1547,7 @@ function finalWinnerControlHtml() {
     const isNext = i === nextIdx;
     return `<li class="fj-ref-row${shown ? " revealed" : ""}${isNext ? " next" : ""}">
       <span class="ref-place">${ordinal(s.rank)}</span>
-      <span class="ref-team">${esc(s.team.name)}</span>
+      <span class="ref-team">${esc(teamLabel(s.team, s.idx))}</span>
       <span class="ref-score">${money(s.team.score)}</span>
       <span class="ref-state">${shown ? "shown" : (isNext ? "◀ next up" : "hidden")}</span>
     </li>`;
@@ -1394,12 +1558,12 @@ function finalWinnerControlHtml() {
     const next = st[nextIdx];
     const champNext = next.isTop;
     action = `
-      <button class="btn gold" id="btnRevealNext">Reveal ${ordinal(next.rank)} place${champNext ? " — the CHAMPION" : ""}: ${esc(next.team.name)} ▶</button>
+      <button class="btn gold" id="btnRevealNext">Reveal ${ordinal(next.rank)} place${champNext ? " — the CHAMPION" : ""}: ${esc(teamLabel(next.team, next.idx))} ▶</button>
       <button class="btn" id="btnRevealAll">Reveal all remaining</button>`;
   } else {
     const tie = champs.length > 1;
     action = `<span class="hint" style="font-size:15px">✅ All places revealed — ${tie ? "co-champions" : "champion"}:
-      <b>${champs.map(c => esc(c.team.name)).join(" &amp; ")}</b> at ${money(champs.length ? champs[0].team.score : 0)}.</span>`;
+      <b>${champs.map(c => esc(teamLabel(c.team, c.idx))).join(" &amp; ")}</b> at ${money(champs.length ? champs[0].team.score : 0)}.</span>`;
   }
 
   const intro = revealed === 0

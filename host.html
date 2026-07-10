@@ -252,7 +252,8 @@
   /* ---- 30-second timer (corner) ---- */
   .host-timer {
     position: fixed; top: clamp(56px, 8vh, 66px); right: clamp(12px, 2.6vw, 30px);
-    z-index: 40; text-align: center; pointer-events: none;
+    /* above the phone-a-grandma card (110): the countdown must never be covered */
+    z-index: 115; text-align: center; pointer-events: none;
     background: rgba(8,14,36,.9); border: 1px solid var(--panel-border);
     border-radius: 18px; padding: 8px 20px 10px; backdrop-filter: blur(6px);
   }
@@ -305,6 +306,36 @@
   @keyframes notepopbar {
     0% { transform: translateY(100%); opacity: .2; }
     100% { transform: translateY(0); opacity: 1; }
+  }
+
+  /* ---- "(team) has phoned grandma!" ----
+     Above the note bar and the timer, below the category teleprompter. It lingers
+     ~10s (js/host.js): the host is the one who has to react to it. */
+  .host-phone {
+    position: fixed; top: 62px; left: 50%; transform: translateX(-50%);
+    z-index: 110; width: min(92vw, 720px);
+    /* the 30-second timer lives in the top-right corner; while it's counting, keep
+       symmetric margins wide enough that this card never covers it */
+    display: flex; align-items: center; gap: clamp(12px, 2.4vw, 24px);
+    background: linear-gradient(180deg, #2f7d4f, #1d5a37);
+    border: 3px solid #7ee0a6; border-radius: 20px;
+    padding: clamp(14px, 2.4vw, 24px) clamp(18px, 3vw, 32px);
+    box-shadow: 0 20px 60px rgba(0,0,0,.55);
+  }
+  .hp-phone { font-size: clamp(34px, 6vw, 64px); line-height: 1; flex: none; }
+  .hp-body { min-width: 0; }
+  .hp-name {
+    font-size: clamp(24px, 4vw, 46px); font-weight: 900; line-height: 1.05; color: #fff;
+    text-shadow: 0 2px 0 rgba(0,0,0,.3); word-break: break-word;
+  }
+  .hp-line { font-size: clamp(16px, 2.4vw, 28px); font-weight: 800; color: #cdf5dd; margin-top: 2px; }
+  .hp-players { font-size: clamp(13px, 1.7vw, 19px); color: #a9dfc2; margin-top: 6px; }
+  .hp-note { font-size: clamp(12px, 1.5vw, 17px); color: #8ecbaa; margin-top: 8px; font-style: italic; }
+  body.timer-on .host-phone { max-width: calc(100vw - 2 * clamp(150px, 22vw, 210px)); }
+  .host-phone.pop { animation: phonepop .45s cubic-bezier(.2,.9,.25,1.15); }
+  @keyframes phonepop {
+    0% { transform: translateX(-50%) translateY(-16px) scale(.94); opacity: 0; }
+    100% { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
   }
 
   /* ---- Final Jeopardy wager entry (live mode) ---- */
@@ -434,10 +465,12 @@
   </div>
   <div id="host-content"></div>
   <div id="host-note" class="host-note" hidden></div>
+  <!-- "(team) has phoned grandma!" — the host's longer version of the TV banner -->
+  <div id="host-phone" class="host-phone" hidden></div>
   <!-- full-screen category-reveal takeover, synced to the TV (js/host.js) -->
   <div id="host-catintro" hidden></div>
   <!-- bump ?v= on every deploy so browsers never run stale cached JS -->
-  <script src="js/bus.js?v=40"></script>
-  <script src="js/host.js?v=40"></script>
+  <script src="js/bus.js?v=42"></script>
+  <script src="js/host.js?v=42"></script>
 </body>
 </html>

@@ -72,12 +72,31 @@ body.control { background: var(--panel-bg); color: var(--panel-text); min-height
 .mini-tile.dd::after { content: "•"; color: #ff8888; margin-left: 4px; }
 
 /* teams */
-.teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .team-card { background: #191c2b; border: 1px solid #3a3f58; border-radius: 10px; padding: 12px; }
 .team-card .tname { font-weight: 700; font-size: 15px; margin-bottom: 4px; word-break: break-word; }
 .team-card .tscore { font-size: 26px; font-weight: 800; color: var(--value-gold); margin-bottom: 8px; }
 .team-card .tscore.neg { color: var(--bad); }
 .team-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+/* mirrors the green pod on the TV: this is the team whose turn it is to pick */
+.team-card.is-picking { border-color: #3ddc84; box-shadow: inset 0 0 0 1px rgba(61,220,132,.35); }
+.tname-unset { font-weight: 400; font-size: 12px; color: var(--panel-dim); font-style: italic; }
+/* 📞 one call per team; greyed (but still clickable, with a confirm) once used */
+.phone-btn { width: 100%; margin-top: 8px; }
+.phone-btn.is-done { opacity: .5; }
+.phone-btn.is-done:hover { opacity: .75; }
+
+/* the sheet's team number — a handle for the host, never shown on the TV */
+.team-row { align-items: center; }
+.team-id { flex: none; min-width: 72px; font-size: 13px; font-weight: 700; color: var(--panel-dim);
+  background: #191c2b; border: 1px solid #3a3f58; border-radius: 8px; padding: 9px 10px; text-align: center; }
+
+/* whose turn it is to pick, above the score cards */
+.turn-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;
+  background: #191c2b; border: 1px solid #3a3f58; border-radius: 10px; padding: 8px 12px; }
+.turn-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--panel-dim); }
+.turn-now { font-weight: 800; font-size: 16px; color: #3ddc84; }
+.turn-order { flex: 1 1 260px; min-width: 200px; text-align: right; }
 
 /* clue control */
 .clue-box { background: #191c2b; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
@@ -213,6 +232,11 @@ body.display { background: #000; color: #fff; overflow: hidden; user-select: non
 .score-pod .sp-score.neg { color: #ff7070; }
 .score-pod .sp-players { color: #c7d0ff; font-size: 1.1vw; margin-top: .4vh; max-width: 22vw;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* whose turn it is to pick: a subtle green wash on their pod in the strip below
+   the board. Deliberately quiet — a hint for the room, not a second scoreboard. */
+.scores-strip .score-pod.is-picking { border-color: #3ddc84;
+  background: linear-gradient(180deg, #0a5c34 0%, #06421f 100%);
+  box-shadow: 0 0 1.6vmin rgba(61,220,132,.45); }
 .bigscore-pod .sp-players { font-size: 1.4vw; max-width: 26vw; }
 
 /* big scores view — pods kept compact so up to 6 teams fit without cutoff */
@@ -241,18 +265,86 @@ body.display.is-fullscreen .fs-btn { display: none; }
 @keyframes fsPulse { 0%, 100% { opacity: .58; } 50% { opacity: 1; } }
 body.display.is-fullscreen .fs-prompt { display: none; }
 
-/* fade curtain on the display — the fade-to-black / fade-to-title / show-the-game
-   failsafes and the black-screen-first deploy flow. A persistent overlay over
-   everything (kept outside #app so it survives re-renders), driven by S.stage,
-   so its opacity transitions smoothly. z-index sits below the ⛶ button so the
-   host can still click it to go borderless while the curtain is up. */
+/* fade curtain on the display — the fade-to-black / fade-to-a-screen /
+   show-the-game failsafes and the black-screen-first deploy flow. A persistent
+   overlay over everything (kept outside #app so it survives re-renders), driven
+   by S.stage, so its opacity transitions smoothly. z-index sits below the ⛶
+   button so the host can still click it to go borderless while the curtain is up. */
 .disp-curtain { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
-/* two stacked layers; black is declared last so it sits on top of the title */
-.disp-curtain .curtain-title, .disp-curtain .curtain-black {
+/* two stacked layers; black is declared last so it sits on top of the panel.
+   The panel holds whichever full-screen card the stage names — title, rules,
+   teams, or the picking order — so moving between them never moves the layer. */
+.disp-curtain .curtain-panel, .disp-curtain .curtain-black {
   position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease; }
 .disp-curtain .curtain-black { background: #000; }
-.disp-curtain .curtain-title { display: flex; }
-.disp-curtain .curtain-title .disp-view { flex: 1; }
+.disp-curtain .curtain-panel { display: flex; }
+.disp-curtain .curtain-panel .disp-view { flex: 1; }
+
+/* ---- the pre-game screens: rules / teams / who picks first ---------------- */
+.screen-title { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
+  font-size: 5.2vw; letter-spacing: .06em; text-shadow: .05em .05em 0 #000; margin-bottom: 3vh; }
+.screen-empty { color: #c7d0ff; font-size: 2.2vw; text-align: center; max-width: 70vw; line-height: 1.5; }
+.screen-empty b { color: var(--value-gold); }
+
+/* rules — numbered, and sized by rulesScreenHtml so a long set still fits */
+.rules-screen { padding: 4vh 6vw; }
+.rules-list { list-style: none; counter-reset: rule; max-width: 84vw; }
+.rules-list li { counter-increment: rule; position: relative; color: #fff; font-size: var(--rule-size);
+  line-height: 1.35; padding: 0 0 0 2.4em; margin-bottom: 2.2vh; text-shadow: .04em .04em 0 rgba(0,0,0,.6); }
+.rules-list li::before { content: counter(rule) "."; position: absolute; left: 0; top: -.05em;
+  width: 1.7em; text-align: right; font-family: Impact, "Arial Black", sans-serif;
+  color: var(--value-gold); text-shadow: .05em .05em 0 #000; }
+.rules-para { color: #fff; font-size: var(--rule-size); line-height: 1.4; max-width: 80vw;
+  text-align: center; text-shadow: .04em .04em 0 rgba(0,0,0,.6); }
+
+/* teams — the sheet's team NUMBER is deliberately absent (it's an internal ID);
+   an unnamed team gets a gold blank for the players to fill in out loud */
+.teams-screen { padding: 3vh 4vw; }
+.teams-note { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold);
+  font-size: 4vw; text-align: center; line-height: 1.1; text-shadow: .05em .05em 0 #000; margin-bottom: 4vh; }
+.tv-teams { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 2.4vh 2vw;
+  width: 100%; max-width: 92vw; }
+.tv-team { background: var(--board-blue); border: .5vmin solid #000; border-radius: 1.4vmin;
+  padding: 2vh 1.6vw; text-align: center; display: flex; flex-direction: column; justify-content: center; }
+.tvt-name { font-family: Impact, "Arial Black", sans-serif; color: #fff; font-size: 2.6vw;
+  line-height: 1.1; text-transform: uppercase; text-shadow: .05em .05em 0 #000;
+  min-height: 1.2em; display: flex; align-items: center; justify-content: center; word-break: break-word; }
+/* the blank where their chosen name will go */
+.tvt-blank { display: block; width: 60%; border-bottom: .45vmin dashed var(--value-gold); height: .9em; }
+.tvt-players { margin-top: 1.4vh; display: flex; flex-wrap: wrap; gap: .3vh .9vw; justify-content: center; }
+.tvt-player { color: #dbe2ff; font-size: 1.7vw; line-height: 1.3; }
+.tvt-player + .tvt-player::before { content: "·"; color: #8b98d8; margin-right: .9vw; }
+.tvt-none { color: #8b98d8; }
+
+/* who picks first */
+.picks-screen { padding: 3vh 4vw; }
+.picks-first { text-align: center; margin-bottom: 3.4vh; }
+.pf-name { font-family: Impact, "Arial Black", sans-serif; color: #fff; font-size: 6vw; line-height: 1.02;
+  text-transform: uppercase; text-shadow: .05em .05em 0 #000, 0 0 4vmin rgba(6,12,233,.9); word-break: break-word; }
+.pf-tag { color: var(--value-gold); font-size: 2.6vw; letter-spacing: .2em; text-transform: uppercase; margin-top: .8vh; }
+.picks-list { list-style: none; display: flex; flex-direction: column; gap: 1.1vh; max-width: 60vw; width: 100%; }
+.pk-row { display: flex; align-items: center; gap: 1.6vw; background: rgba(0,0,0,.28);
+  border: .25vmin solid rgba(255,204,0,.35); border-radius: 1vmin; padding: .9vh 1.6vw;
+  animation: pkIn .45s ease both; animation-delay: calc(var(--k) * .12s); }
+@keyframes pkIn { from { opacity: 0; transform: translateX(-2vw); } to { opacity: 1; transform: none; } }
+.pk-num { font-family: Impact, "Arial Black", sans-serif; color: var(--value-gold); font-size: 2.4vw;
+  min-width: 2ch; text-align: center; text-shadow: .05em .05em 0 #000; }
+.pk-name { color: #fff; font-size: 2.2vw; font-weight: 700; word-break: break-word; }
+.picks-foot { color: #c7d0ff; font-size: 1.6vw; margin-top: 3vh; letter-spacing: .06em; }
+
+/* ---- "(team) has phoned grandma!" — a brief banner over whatever's showing ---
+   Above the curtain and the ⛶ button (a deliberate host action always lands),
+   below the category-intro takeover. Auto-hides after ~4s (js/display.js). */
+.phone-toast { position: fixed; left: 50%; top: 4vh; transform: translate(-50%, -160%);
+  z-index: 65; display: flex; align-items: center; gap: 1.4vw; pointer-events: none;
+  background: linear-gradient(180deg, #2f7d4f, #17512f); border: .45vmin solid #7ee0a6;
+  border-radius: 1.6vmin; padding: 1.6vh 2.6vw; max-width: 88vw;
+  box-shadow: 0 1.4vmin 4vmin rgba(0,0,0,.6);
+  opacity: 0; transition: transform .45s cubic-bezier(.2,.9,.25,1.15), opacity .45s ease; }
+.phone-toast.show { transform: translate(-50%, 0); opacity: 1; }
+.pt-phone { font-size: 3.4vw; line-height: 1; }
+.pt-text { font-family: Impact, "Arial Black", sans-serif; color: #fff; font-size: 2.6vw;
+  line-height: 1.1; text-transform: uppercase; text-shadow: .05em .05em 0 #000; }
 
 /* category intro reveal — a full-screen "here are today's categories" animation */
 .cat-intro { position: fixed; inset: 0; z-index: 70; overflow: hidden; display: flex;

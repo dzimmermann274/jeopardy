@@ -20,7 +20,8 @@ function freshState() {
     phase: "setup",          // setup | play
     game: null,              // see js/data.js for the game object shape
     roundIdx: 0,
-    teams: [],               // [{name, score}]
+    teams: [],               // [{id, name, players, score}] — id is the sheet's team number,
+                             //   name is typed on the control panel (blank until the team picks one)
     view: "welcome",         // welcome | board | clue | dd | bigscores | winner
                              //   Final Jeopardy sequence (stepped from the control panel):
                              //   final-intro | final-category | final-clue | final-tally | final-winner
@@ -40,6 +41,16 @@ function freshState() {
                              //   "game"  = show the live game (no curtain)
                              //   "black" = fade the TV to solid black
                              //   "title" = fade the TV to the title screen
+                             //   "rules" = the house rules, read from the sheet's Game Setup D7
+                             //   "teams" = the team groups, so players find theirs and pick a name
+                             //   "picks" = the shuffled picking order and who goes first
+    pickOrder: [],           // shuffled team indexes — the rotation for who picks the next clue.
+                             //   Empty until "Show who picks first" draws it (once per game).
+    pickIdx: 0,              // pointer into pickOrder: whose turn it is to pick right now
+    phones: {},              // teamIdx -> true once that team has spent its one "phone grandma"
+    phoneAlert: null,        // {teamIdx, name, ts} — the one-shot "…has phoned grandma!" banner.
+                             //   The TV and Host View fire on a CHANGED ts, so an ordinary
+                             //   re-render (or a score edit) never replays it.
     hostNote: { text: "", ts: 0 },  // "Note from Danny" pushed to the passive Host View
                              //   (host.html). Never rendered on the TV; the display ignores it.
     finalPrep: false,        // true while the control panel's "Start Final Jeopardy?" confirm is
@@ -59,12 +70,27 @@ function save() {
   catch (e) { /* storage blocked/full: play on without persistence */ }
 }
 
+/* A save written before the picking order / phone-a-grandma fields existed is
+   still a perfectly good game — fill in what it's missing rather than refusing it. */
+function normalizeState(s) {
+  if (!Array.isArray(s.pickOrder)) s.pickOrder = [];
+  if (typeof s.pickIdx !== "number" || !isFinite(s.pickIdx)) s.pickIdx = 0;
+  if (!s.phones || typeof s.phones !== "object") s.phones = {};
+  if (!s.phoneAlert || typeof s.phoneAlert !== "object") s.phoneAlert = null;
+  (s.teams || []).forEach((t, i) => {
+    if (t.id == null) t.id = i + 1;
+    if (typeof t.name !== "string") t.name = "";
+    if (!Array.isArray(t.players)) t.players = [];
+  });
+  return s;
+}
+
 function loadSavedGame() {
   try {
     const saved = localStorage.getItem(SAVE_KEY);
     if (!saved) return null;
     const parsed = JSON.parse(saved);
-    if (parsed && parsed.phase === "play" && parsed.game) return parsed;
+    if (parsed && parsed.phase === "play" && parsed.game) return normalizeState(parsed);
   } catch (e) { /* corrupt save */ }
   return null;
 }
@@ -108,10 +134,22 @@ function refreshDisplayOpenState() {
   if (screensOv) renderScreensDialog();
 }
 
+/* The display's first real snapshot is a starting point, not news: a TV opened
+   (or reopened) mid-game must not replay the phone-a-grandma banner that fired
+   before it existed. primeDisplayOneShots (display.js) records what has already
+   happened so only genuinely NEW events animate. */
+let displaySeenState = false;
+
 CHANNEL.onmessage = (ev) => {
   const msg = ev.data;
   if (IS_DISPLAY) {
-    if (msg.type === "state") { S = msg.state; renderDisplay(); }
+    if (msg.type === "state") {
+      const first = !displaySeenState;
+      displaySeenState = true;
+      S = msg.state;
+      if (first) primeDisplayOneShots();
+      renderDisplay();
+    }
     else if (msg.type === "ping-display") { CHANNEL.postMessage({ type: "display-alive" }); }
     else if (msg.type === "play-intro") { playCategoryIntro(!!msg.reveal); }   // full-screen category reveal (reveal => also populate the board)
   } else {
@@ -164,6 +202,50 @@ function clueImageChanges(cl) {
   const a = imageList(cl.answerImage), q = imageList(cl.image);
   return a.length > 0 && a.join("|") !== q.join("|");
 }
+/* ---------------- teams: IDs vs names ----------------
+   The sheet numbers its teams 1-6. That number is an ID — a handle for the group,
+   not something anyone should ever read on the TV. Real names are chosen by the
+   players while the "teams" screen is up and typed into the control panel.
+
+   So there are two ways to write a team down:
+     teamLabel()     — for the CONTROL PANEL and Host View: the name, or "Team 3"
+                       while it hasn't got one. The host needs to tell them apart.
+     dispTeamName()  — for the TV: the name, or "" (the screens draw a blank line).
+                       Never falls back to the ID.                                  */
+function teamIdOf(t, i) { return (t && t.id != null) ? t.id : i + 1; }
+function teamNamed(t) { return !!(t && String(t.name || "").trim()); }
+function dispTeamName(t) { return String((t && t.name) || "").trim(); }
+function teamLabel(t, i) { return dispTeamName(t) || ("Team " + teamIdOf(t, i)); }
+
+/* ---------------- picking order ----------------
+   Who chooses the next category rotates equally: S.pickOrder is a shuffle of the
+   team indexes, S.pickIdx walks it one step per clue. Anything that changes the
+   team list clears the order (see control.js) rather than leaving a stale index
+   pointing at a team that no longer exists — but validate anyway, since a state
+   snapshot can arrive from another device. */
+function pickOrderValid(s) {
+  const o = s && s.pickOrder, teams = (s && s.teams) || [];
+  if (!Array.isArray(o) || !o.length || o.length !== teams.length) return false;
+  if (new Set(o).size !== o.length) return false;
+  return o.every(i => Number.isInteger(i) && i >= 0 && i < teams.length);
+}
+/* The team index whose turn it is to pick, or -1 when no order has been drawn. */
+function currentPicker(s) {
+  s = s || S;
+  if (!pickOrderValid(s)) return -1;
+  const n = s.pickOrder.length;
+  return s.pickOrder[((s.pickIdx % n) + n) % n];   // wraps, and survives a negative pickIdx
+}
+/* Fisher-Yates over [0..n-1] — the one-time draw for who picks first. */
+function shuffledOrder(n) {
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 /* The team(s) with the top score — used by the winner screen (handles ties). */
 function winnersOf(teams) {
   if (!teams || !teams.length) return [];
