@@ -31,6 +31,91 @@ function welcomeHtml() {
 const OVERLAY_VIEWS = ["bigscores", "winner"];
 function isOverlayView(v) { return OVERLAY_VIEWS.indexOf(v) !== -1; }
 
+/* ---------------- the pre-game screens (rules / teams / who picks first) --------
+   Each is a full-screen card the host raises from the control panel, drawn on the
+   same curtain layer as the title screen (see renderCurtain). They read S and
+   nothing else, so a team renamed on the control panel updates here immediately. */
+
+/* The house rules, from cell D7 of the sheet's Game Setup tab. "##" separates
+   them, exactly like every other multi-line cell in the workbook; each piece
+   becomes a numbered rule (a single unbroken cell stays one paragraph). */
+function rulesScreenHtml() {
+  const raw = (S.game && S.game.rules) || "";
+  const rules = raw.split("##").map(s => s.trim().replace(/^[-•*]\s*/, "")).filter(Boolean);
+  // Shrink as the list grows so even a long set of rules fits on one screen
+  // without scrolling — nobody can scroll a TV.
+  const longest = rules.reduce((n, l) => Math.max(n, l.length), 0);
+  const size = (rules.length > 7 || longest > 120) ? 1.9
+             : (rules.length > 5 || longest > 80) ? 2.3 : 2.8;
+  let body;
+  if (!rules.length) {
+    body = `<div class="screen-empty">No rules written yet — put them in cell <b>D7</b>
+      of the ⚙️ Game Setup tab (use <b>##</b> to start a new rule).</div>`;
+  } else if (rules.length === 1) {
+    body = `<div class="rules-para">${esc(rules[0])}</div>`;
+  } else {
+    body = `<ol class="rules-list">${rules.map(r => `<li>${esc(r)}</li>`).join("")}</ol>`;
+  }
+  return `<div class="disp-view disp-bluebg rules-screen" style="--rule-size:${size}vw">
+    <div class="screen-title">RULES</div>
+    ${body}
+  </div>`;
+}
+
+/* "Find your team and choose a team name!" — the groups, with a blank where the
+   name will go. The sheet's team NUMBER is deliberately absent: it's an internal
+   ID, and players find themselves by their own name in the list. Once the host
+   types a name on the control panel it appears here, live. */
+function teamsScreenHtml() {
+  const teams = S.teams || [];
+  if (!teams.length) {
+    return `<div class="disp-view disp-bluebg teams-screen">
+      <div class="screen-empty">No teams yet.</div></div>`;
+  }
+  const cards = teams.map(t => {
+    const name = dispTeamName(t);
+    const players = (t.players && t.players.length) ? t.players : [];
+    return `<div class="tv-team${name ? " is-named" : ""}">
+      <div class="tvt-name">${name ? esc(name) : `<span class="tvt-blank"></span>`}</div>
+      <div class="tvt-players">${players.length
+        ? players.map(p => `<span class="tvt-player">${esc(p)}</span>`).join("")
+        : `<span class="tvt-player tvt-none">—</span>`}</div>
+    </div>`;
+  }).join("");
+  // Up to 3 teams sit in one row; 4 make a tidy 2x2; 5-6 go 3 across.
+  const n = teams.length;
+  const cols = n <= 3 ? n : n === 4 ? 2 : 3;
+  return `<div class="disp-view disp-bluebg teams-screen">
+    <div class="teams-note">Find your team and choose a team name!</div>
+    <div class="tv-teams" style="--cols:${cols}">${cards}</div>
+  </div>`;
+}
+
+/* The shuffled rotation: who picks first, and the order it travels in after that. */
+function picksScreenHtml() {
+  const teams = S.teams || [];
+  if (!pickOrderValid(S)) {
+    return `<div class="disp-view disp-bluebg picks-screen">
+      <div class="screen-title">WHO PICKS FIRST</div>
+      <div class="screen-empty">Drawing the order…</div></div>`;
+  }
+  const order = S.pickOrder;
+  const firstName = dispTeamName(teams[order[0]]);
+  const rows = order.map((ti, k) => `<li class="pk-row" style="--k:${k}">
+      <span class="pk-num">${k + 1}</span>
+      <span class="pk-name">${esc(dispTeamName(teams[ti]) || "—")}</span>
+    </li>`).join("");
+  return `<div class="disp-view disp-bluebg picks-screen">
+    <div class="screen-title">THE PICKING ORDER</div>
+    <div class="picks-first">
+      <div class="pf-name">${esc(firstName || "—")}</div>
+      <div class="pf-tag">picks first!</div>
+    </div>
+    <ol class="picks-list">${rows}</ol>
+    <div class="picks-foot">Then it goes round in this order — one pick each.</div>
+  </div>`;
+}
+
 /* Remembers which revealed answer is currently on screen, so the "pop"
    animation plays once on reveal and then holds static across re-renders
    (e.g. when the host edits a score while the answer is up). */
@@ -115,7 +200,7 @@ function renderDisplay() {
       <div class="bigscores">
         ${[...S.teams].sort((a, b) => b.score - a.score).map(t => `
           <div class="bigscore-pod score-pod">
-            <div class="sp-name">${esc(t.name)}</div>
+            <div class="sp-name">${esc(dispTeamName(t) || "—")}</div>
             <div class="sp-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</div>
             ${t.players && t.players.length ? `<div class="sp-players">${esc(t.players.join(" · "))}</div>` : ""}
           </div>`).join("")}
@@ -127,12 +212,12 @@ function renderDisplay() {
     const topScore = champs.length ? champs[0].score : 0;
     view = `<div class="disp-view winner-view">
       <div class="winner-banner ${animateWin ? "pop" : ""}">${tie ? "IT'S A TIE!" : "WINNER"}</div>
-      <div class="winner-name">${champs.map(t => esc(t.name)).join(" &nbsp;&amp;&nbsp; ")}</div>
+      <div class="winner-name">${champs.map(t => esc(dispTeamName(t) || "—")).join(" &nbsp;&amp;&nbsp; ")}</div>
       <div class="winner-score">${money(topScore)}</div>
       <div class="bigscores">
         ${sorted.map(t => `
           <div class="bigscore-pod score-pod ${t.score === topScore ? "is-winner" : ""}">
-            <div class="sp-name">${esc(t.name)}</div>
+            <div class="sp-name">${esc(dispTeamName(t) || "—")}</div>
             <div class="sp-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</div>
             ${t.players && t.players.length ? `<div class="sp-players">${esc(t.players.join(" · "))}</div>` : ""}
           </div>`).join("")}
@@ -213,12 +298,15 @@ function renderDisplay() {
     || S.view === "final-intro" || S.view === "final-category" || S.view === "final-clue";
   const showStrip = S.phase === "play" && !clueFullView
     && S.view !== "bigscores" && S.view !== "winner" && S.view !== "final-winner" && S.teams.length;
+  // Whose turn it is to pick: their pod glows a subtle green in the strip below the
+  // board. -1 (no order drawn yet) simply matches nobody.
+  const picker = currentPicker(S);
   app.innerHTML = `
     <div class="disp-stage">
       ${view}
       ${showStrip ? `<div class="scores-strip">
-        ${S.teams.map(t => `<div class="score-pod">
-          <div class="sp-name">${esc(t.name)}</div>
+        ${S.teams.map((t, i) => `<div class="score-pod${i === picker ? " is-picking" : ""}">
+          <div class="sp-name">${esc(dispTeamName(t) || "—")}</div>
           <div class="sp-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</div>
         </div>`).join("")}</div>` : ""}
     </div>
@@ -229,6 +317,7 @@ function renderDisplay() {
   document.getElementById("btnFS").onclick = goFullscreen;
   runTimerBar();
   renderCurtain();
+  renderPhoneToast();                  // fires only when a NEW team has phoned grandma
   applyBoardPending();                 // keep tiles hidden if a board rebuild lands mid-intro (no-op otherwise)
   // Frozen while an overlay (scores / winner) is up, so dismissing it returns to
   // the game exactly as it was rather than re-entering the view underneath.
@@ -345,13 +434,29 @@ function startClueFly(fromRect, boardBg) {
 }
 
 /* The curtain is a persistent overlay (kept OUTSIDE #app, which is rebuilt on
-   every render) so it can transition smoothly — the fade-to-black /
-   fade-to-title / fade-back-to-game failsafes. Driven purely by S.stage: the
-   control panel sets it and broadcasts, the display just reacts.
+   every render) so it can transition smoothly — the fade-to-black / fade-to-a-
+   screen / fade-back-to-game failsafes. Driven purely by S.stage: the control
+   panel sets it and broadcasts, the display just reacts.
 
-   Two stacked layers (title beneath, black on top) each fade their own opacity,
+   Two stacked layers (a PANEL beneath, black on top) each fade their own opacity,
    so a fade TO black is ALWAYS smooth (black fades in over whatever's showing).
-   The one exception the host asked for: black -> title is an instant cut. */
+   The panel draws whichever full-screen card the stage names — the title screen,
+   the rules, the teams, or the picking order — so moving between two of them is
+   just a content swap under a layer that never moves. The one exception the host
+   asked for: black -> a panel is an instant cut, not a fade. */
+const PANEL_STAGES = ["title", "rules", "teams", "picks"];
+function isPanelStage(s) { return PANEL_STAGES.indexOf(s) !== -1; }
+function stagePanelHtml(stage) {
+  switch (stage) {
+    case "title": return welcomeHtml();
+    case "rules": return rulesScreenHtml();
+    case "teams": return teamsScreenHtml();
+    case "picks": return picksScreenHtml();
+    default:      return "";
+  }
+}
+let curtainPanelHtml = null;   // what the panel layer currently shows (skip identical rebuilds)
+
 function renderCurtain() {
   const stage = S.stage || "game";
   let el = document.getElementById("dispCurtain");
@@ -360,20 +465,33 @@ function renderCurtain() {
     el = document.createElement("div");
     el.id = "dispCurtain";
     el.className = "disp-curtain";
-    el.innerHTML = `<div class="curtain-title"></div><div class="curtain-black"></div>`;
+    el.innerHTML = `<div class="curtain-panel"></div><div class="curtain-black"></div>`;
     document.body.appendChild(el);
     firstTime = true;
+    curtainPanelHtml = null;
   }
-  const titleEl = el.querySelector(".curtain-title");
+  const panelEl = el.querySelector(".curtain-panel");
   const blackEl = el.querySelector(".curtain-black");
+  const panel = isPanelStage(stage);
+
+  // Refresh the panel's CONTENT on every render, not just when the stage changes:
+  // team names are typed on the control panel WHILE the teams screen is up, and a
+  // window opened straight onto a panel stage paints before the game arrives.
+  // Rebuild only on a real difference, so an unrelated re-render can't flicker it.
+  if (panel) {
+    const html = stagePanelHtml(stage);
+    if (html !== curtainPanelHtml) { panelEl.innerHTML = html; curtainPanelHtml = html; }
+  }
+
   const prev = el.dataset.stage || "game";
   if (stage === prev && !firstTime) return;          // no change -> don't restart a transition
   el.dataset.stage = stage;
-  if (stage === "title") titleEl.innerHTML = welcomeHtml();
   // Everything fades (0.6s) EXCEPT: the very first paint (so a black deploy is a
-  // clean slate, no fade-in over the game) and black -> title (an instant jump).
-  const instant = firstTime || (prev === "black" && stage === "title");
-  setCurtainLayer(titleEl, stage === "title" ? 1 : 0, instant);
+  // clean slate, no fade-in over the game) and black -> a panel (an instant jump).
+  // Panel -> panel needs no transition at all: the layer stays at full opacity and
+  // only its contents change, which reads as a clean cut between the two screens.
+  const instant = firstTime || (prev === "black" && panel);
+  setCurtainLayer(panelEl, panel ? 1 : 0, instant);
   setCurtainLayer(blackEl, stage === "black" ? 1 : 0, instant);
 }
 function setCurtainLayer(elem, target, instant) {
@@ -385,6 +503,55 @@ function setCurtainLayer(elem, target, instant) {
   } else {
     elem.style.opacity = String(target);
   }
+}
+
+/* ---------------- "…has phoned grandma!" ----------------
+   A brief banner over whatever the TV is showing — the game is never interrupted.
+   S.phoneAlert.ts is the trigger: it changes only when the host presses a team's
+   phone button, so ordinary re-renders (a score edit, the timer) leave it alone.
+
+   lastPhoneTs starts at whatever had ALREADY happened when this window first heard
+   from the control panel (primeDisplayOneShots, called from core.js), so a TV
+   opened or reopened mid-game never replays an old call. */
+const PHONE_TOAST_MS = 4200;
+let lastPhoneTs = 0;
+let phoneToastTimer = null;
+
+function primeDisplayOneShots() {
+  lastPhoneTs = (S.phoneAlert && S.phoneAlert.ts) || 0;
+}
+
+function renderPhoneToast() {
+  const a = S.phoneAlert;
+  const ts = (a && a.ts) || 0;
+  if (ts === lastPhoneTs) return;                    // nothing new since the last snapshot
+  lastPhoneTs = ts;
+
+  let el = document.getElementById("phoneToast");
+  if (!a) {                                          // cleared (a new game) — take it down
+    clearTimeout(phoneToastTimer);
+    if (el) el.classList.remove("show");
+    return;
+  }
+  // The team's CURRENT name wins (it may have been renamed since); a.name is the
+  // name it had when it called, for a team that has since been removed. Both are
+  // blank for a team that never chose one — and the TV says "A team" rather than
+  // ever printing the sheet's ID. (The Host View uses a.label and does show it.)
+  const team = (S.teams || [])[a.teamIdx];
+  const name = dispTeamName(team) || a.name || "A team";
+
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "phoneToast";
+    el.className = "phone-toast";
+    document.body.appendChild(el);                   // outside #app, so a re-render can't kill it mid-show
+  }
+  el.innerHTML = `<span class="pt-phone">📞</span><span class="pt-text">${esc(name)} has phoned grandma!</span>`;
+  el.classList.remove("show");
+  void el.offsetWidth;                               // restart the slide-in even on a back-to-back call
+  el.classList.add("show");
+  clearTimeout(phoneToastTimer);
+  phoneToastTimer = setTimeout(() => el.classList.remove("show"), PHONE_TOAST_MS);
 }
 
 /* ---------------- category intro (the "here are today's categories" reveal) ----
@@ -614,7 +781,7 @@ function finalWinnerHtml() {
       </div>
       <div class="sc-id">
         ${champ ? `<div class="sc-champ-tag">CHAMPION</div>` : ""}
-        <div class="sc-name">${esc(s.team.name)}</div>
+        <div class="sc-name">${esc(dispTeamName(s.team) || "—")}</div>
         ${players}
       </div>
       <div class="sc-metrics">

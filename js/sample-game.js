@@ -3,7 +3,16 @@
 const SAMPLE_GAME = {
   title: "Sample Game",
   subtitle: "Welcome to",
-  teams: [],
+  // Demo text for the Rules screen. In a real game this comes from cell D7 of the
+  // Game Setup tab — not from the code. "##" starts a new rule.
+  rules: "Teams take turns picking a category and a dollar amount.##Confer with your team, then answer out loud — the host decides.##Right answer: add the money. Wrong answer: lose it.##A Daily Double lets that team wager anything up to its score.##Each team may phone grandma ONCE for a hint.##Highest score after Final Jeopardy wins.",
+  // Teams as the sheet gives them: a number (the ID) and the players. The name is
+  // blank — the players choose it during the game and the host types it in.
+  teams: [
+    { id: 1, name: "", players: ["Tony", "Michael Paul"] },
+    { id: 2, name: "", players: ["Connor", "Joe"] },
+    { id: 3, name: "", players: ["Amy", "Cara"] },
+  ],
   rounds: [{
     name: "Jeopardy!",
     categories: [

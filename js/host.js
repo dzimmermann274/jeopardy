@@ -39,6 +39,8 @@ let lastContent = null;  // cache of #host-content HTML, so an unchanged state d
                          //   the DOM (avoids reloading preview <img>s and losing scroll)
 let catIntro = null;     // {cats:[...]} while the synced category reveal is playing; null otherwise
 let ciTimers = [];       // its pending step timeouts (cancelled on teardown / replay)
+let lastPhoneTs = 0;     // the phone-a-grandma call this screen has already announced
+let phoneCardTimer = null;
 
 /* ---------------- helpers (mirrored from core.js) ---------------- */
 function esc(s) {
@@ -55,6 +57,23 @@ function winnersOf(teams) {
   if (!teams || !teams.length) return [];
   const max = Math.max(...teams.map(t => t.score));
   return teams.filter(t => t.score === max);
+}
+/* Mirrored from core.js. The sheet numbers its teams; that number is an ID, not a
+   name. The TV never prints it, but the host DOES need to tell an unnamed team
+   apart from the others, so this screen falls back to "Team 3". */
+function teamIdOf(t, i) { return (t && t.id != null) ? t.id : i + 1; }
+function teamLabel(t, i) { return String((t && t.name) || "").trim() || ("Team " + teamIdOf(t, i)); }
+/* Which team's turn it is to pick, or -1 before the order has been drawn. */
+function pickOrderValid(s) {
+  const o = s && s.pickOrder, teams = (s && s.teams) || [];
+  if (!Array.isArray(o) || !o.length || o.length !== teams.length) return false;
+  if (new Set(o).size !== o.length) return false;
+  return o.every(i => Number.isInteger(i) && i >= 0 && i < teams.length);
+}
+function currentPicker(s) {
+  if (!pickOrderValid(s)) return -1;
+  const n = s.pickOrder.length;
+  return s.pickOrder[((s.pickIdx % n) + n) % n];
 }
 /* Teams high -> low with standard competition ranks (ties share a place); each
    keeps its ORIGINAL index so we can look up that team's Final wager/result. */
@@ -105,12 +124,16 @@ CHANNEL.onmessage = (ev) => {
   if (!msg) return;
   if (msg.type === "state") {           // the game snapshot — our main input
     S = msg.state;
+    // The FIRST snapshot is a starting point, not news: a Host View opened
+    // mid-game must not replay a phone-a-grandma call that already happened.
+    if (!gotState) lastPhoneTs = phoneAlertTs();
     gotState = true;
     render();
   } else if (msg.type === "play-intro") {   // the TV is playing the category reveal
     startCatIntro();                    // mirror it here as a host teleprompter (read-only)
   }
 };
+function phoneAlertTs() { return (S && S.phoneAlert && S.phoneAlert.ts) || 0; }
 
 /* Ask the control panel for the current snapshot. It answers read-only (see
    core.js "host-hello") without treating us as a TV. Retry a while in case the
@@ -134,6 +157,9 @@ try {
   const saved = localStorage.getItem(SAVE_KEY);
   if (saved) { const p = JSON.parse(saved); if (p && p.game) S = p; }
 } catch (e) { /* no/blocked storage — we'll paint once a broadcast arrives */ }
+/* Same idea as the first-snapshot prime above, for the boot render below: whatever
+   the seed already says has happened is history, not an event to announce. */
+lastPhoneTs = phoneAlertTs();
 
 /* ---------------- modes ---------------- */
 function setMode(m) {
@@ -167,6 +193,48 @@ function render() {
   const typingWager = el && el.classList && el.classList.contains("hv-wager-input");
   if (!typingWager) renderContent();
   renderNote();
+  renderPhoneAlert();
+}
+
+/* ---------------- "…has phoned grandma!" ----------------
+   The TV gets a quick banner; the host gets a fuller card that stays up long
+   enough to actually do something about it — who called, which players, and the
+   reminder that it was their only one. Fires on a CHANGED S.phoneAlert.ts, so an
+   ordinary re-render never replays it (and see the two primes above for why a
+   Host View opened mid-game stays quiet). */
+const PHONE_CARD_MS = 10000;
+function renderPhoneAlert() {
+  const el = document.getElementById("host-phone");
+  if (!el) return;
+  const a = S && S.phoneAlert;
+  const ts = phoneAlertTs();
+  if (ts === lastPhoneTs) return;         // nothing new
+  lastPhoneTs = ts;
+  if (!a) { el.hidden = true; return; }   // cleared (new game)
+
+  const i = a.teamIdx;
+  const t = (S.teams || [])[i];
+  // Their current name wins (they may have been renamed since the call). For a team
+  // that has since been removed, fall back to what it was called then — a.label
+  // ("Team 3" when it never chose a name), which this private screen may show.
+  const name = t ? teamLabel(t, i) : (a.label || a.name || "A team");
+  const players = t && t.players && t.players.length ? t.players.join(" · ") : "";
+  el.innerHTML = `<div class="hp-phone">📞</div>
+    <div class="hp-body">
+      <div class="hp-name">${esc(name)}</div>
+      <div class="hp-line">has phoned grandma!</div>
+      ${players ? `<div class="hp-players">${esc(players)}</div>` : ""}
+      <div class="hp-note">That was their one call for the game.</div>
+    </div>`;
+  el.hidden = false;
+  el.classList.remove("pop");
+  void el.offsetWidth;
+  el.classList.add("pop");
+  clearTimeout(phoneCardTimer);
+  phoneCardTimer = setTimeout(() => {
+    const e = document.getElementById("host-phone");
+    if (e) e.hidden = true;
+  }, PHONE_CARD_MS);
 }
 
 function renderContent() {
@@ -198,12 +266,16 @@ function contentHtml() {
   // ---- live mode ----
   if (S.finalPrep) return finalReadyHtml();
   const title = (S.game && S.game.title) || "Jeopardy";
+  // A pre-game screen is up on the TV (rules / teams / who picks first). Those are
+  // the host's cue to read something out, so show it here instead of the game
+  // underneath — whether the game has started yet or not.
+  if (S.stage === "rules" || S.stage === "teams" || S.stage === "picks") return stageHtml(S.stage, title);
   if (S.phase === "setup") {
     return idleHtml(title, S.game ? "Game loaded — waiting for the host to start." : "Waiting for the game to be set up.");
   }
   switch (S.view) {
     case "welcome":       return idleHtml(title, "Title screen is on the TV. Get ready…");
-    case "board":         return idleHtml(title, "Board is up — waiting for a question to be picked.");
+    case "board":         return idleHtml(title, boardIdleSub());
     // Scores put on the TV mid-wagering shouldn't pull the host off the wager
     // sheet — that's still the job in front of them.
     case "bigscores":     return isWagerStage(S.prevView) ? wagerStageHtml(S.prevView, true)
@@ -225,6 +297,59 @@ function idleHtml(title, sub) {
   return `<div class="idle">
     <div class="idle-title">${esc(title)}</div>
     ${sub ? `<div class="idle-sub">${esc(sub)}</div>` : ""}
+  </div>`;
+}
+
+/* The board is up: say whose turn it is to pick, so the host can call on them. */
+function boardIdleSub() {
+  const p = currentPicker(S);
+  if (p === -1) return "Board is up — waiting for a question to be picked.";
+  return "Board is up — " + teamLabel(S.teams[p], p) + " picks next.";
+}
+
+/* What the host sees while one of the pre-game screens is on the TV. The rules and
+   the picking order are here in full: they're what he reads out. */
+function stageHtml(stage, title) {
+  if (stage === "rules") {
+    const rules = String((S.game && S.game.rules) || "")
+      .split("##").map(s => s.trim().replace(/^[-•*]\s*/, "")).filter(Boolean);
+    if (!rules.length) return idleHtml(title, "Rules are on the TV — but cell D7 of the sheet is empty, so it just shows a note.");
+    return `<div class="scores">
+      <div class="scores-title">Rules — on the TV now</div>
+      <div class="scores-list">
+        ${rules.map((r, i) => `<div class="score-row">
+          <span class="s-name"><b>${i + 1}.</b> ${esc(r)}</span>
+        </div>`).join("")}
+      </div>
+    </div>`;
+  }
+  if (stage === "teams") {
+    const teams = S.teams || [];
+    return `<div class="scores">
+      <div class="scores-title">Teams — on the TV now</div>
+      <div class="scores-list">
+        ${teams.map((t, i) => `<div class="score-row">
+          <span class="s-team">
+            <span class="s-name">${esc(teamLabel(t, i))}</span>
+            ${t.players && t.players.length ? `<span class="s-players">${esc(t.players.join(" · "))}</span>` : ""}
+          </span>
+        </div>`).join("")}
+      </div>
+      <div class="scores-title" style="margin-top:18px;font-size:inherit;opacity:.7">
+        They're picking names — Danny types them into the control panel.</div>
+    </div>`;
+  }
+  // picks
+  if (!pickOrderValid(S)) return idleHtml(title, "Drawing the picking order…");
+  const teams = S.teams;
+  const first = S.pickOrder[0];
+  return `<div class="scores">
+    <div class="scores-title">${esc(teamLabel(teams[first], first))} picks first</div>
+    <div class="scores-list">
+      ${S.pickOrder.map((ti, k) => `<div class="score-row ${k === 0 ? "win" : ""}">
+        <span class="s-name">${k + 1}. ${esc(teamLabel(teams[ti], ti))}</span>
+      </div>`).join("")}
+    </div>
   </div>`;
 }
 
@@ -327,7 +452,7 @@ function hostWagerHtml() {
     <div class="hv-wagers-title">Final Jeopardy wagers</div>
     <div class="hv-wagers-sub">Enter each team's wager — this syncs with the control panel.</div>
     ${teams.map((t, i) => `<div class="hv-wager-row">
-      <span class="hv-wager-name">${esc(t.name)} <span class="hv-wager-score">(${money(t.score)})</span></span>
+      <span class="hv-wager-name">${esc(teamLabel(t, i))} <span class="hv-wager-score">(${money(t.score)})</span></span>
       <input class="hv-wager-input" type="number" inputmode="numeric" min="0" step="100"
              data-wager="${i}" value="${S.finalWagers[i] ? esc(String(S.finalWagers[i])) : ""}" placeholder="0">
     </div>`).join("")}
@@ -341,13 +466,15 @@ function commitHostWager(i, value) {
 }
 
 function scoresHtml(title) {
-  const sorted = [...(S.teams || [])].sort((a, b) => b.score - a.score);
+  // Keep each team's ORIGINAL index through the sort so teamLabel can still name an
+  // unnamed team "Team 3" rather than losing which one it was.
+  const sorted = (S.teams || []).map((t, i) => ({ t, i })).sort((a, b) => b.t.score - a.t.score);
   return `<div class="scores">
     <div class="scores-title">${esc(title)}</div>
     <div class="scores-list">
-      ${sorted.map(t => `<div class="score-row">
+      ${sorted.map(({ t, i }) => `<div class="score-row">
         <span class="s-team">
-          <span class="s-name">${esc(t.name)}</span>
+          <span class="s-name">${esc(teamLabel(t, i))}</span>
           ${t.players && t.players.length ? `<span class="s-players">${esc(t.players.join(" · "))}</span>` : ""}
         </span>
         <span class="s-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</span>
@@ -361,14 +488,14 @@ function winnerHtml() {
   const champs = winnersOf(teams);
   const tie = champs.length > 1;
   const top = champs.length ? champs[0].score : 0;
-  const sorted = [...teams].sort((a, b) => b.score - a.score);
+  const sorted = teams.map((t, i) => ({ t, i })).sort((a, b) => b.t.score - a.t.score);
   return `<div class="scores">
     <div class="winner-banner">${tie ? "IT'S A TIE" : "WINNER"} — on the TV now</div>
-    <div class="winner-name">${champs.map(t => esc(t.name)).join(" &amp; ")}</div>
+    <div class="winner-name">${champs.map(t => esc(teamLabel(t, teams.indexOf(t)))).join(" &amp; ")}</div>
     <div class="winner-score">${money(top)}</div>
     <div class="scores-list">
-      ${sorted.map(t => `<div class="score-row ${t.score === top ? "win" : ""}">
-        <span class="s-name">${esc(t.name)}</span>
+      ${sorted.map(({ t, i }) => `<div class="score-row ${t.score === top ? "win" : ""}">
+        <span class="s-name">${esc(teamLabel(t, i))}</span>
         <span class="s-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</span>
       </div>`).join("")}
     </div>
@@ -392,7 +519,7 @@ function finalWinnerHtml() {
     const champs = st.filter(s => s.isTop);
     headsUp = `<div class="headsup done">
       <div class="hu-kicker">All places revealed</div>
-      <div class="hu-name">${champs.map(c => esc(c.team.name)).join(" &amp; ")}</div>
+      <div class="hu-name">${champs.map(c => esc(teamLabel(c.team, c.idx))).join(" &amp; ")}</div>
       <div class="hu-line">${champs.length > 1 ? "Co-champions" : "Champion"} · ${money(champs.length ? champs[0].team.score : 0)}</div>
     </div>`;
   } else {
@@ -403,7 +530,7 @@ function finalWinnerHtml() {
     headsUp = `<div class="headsup">
       <div class="hu-kicker">${revealed === 0 ? "Tallying scores… announce first:" : "Announce next:"}</div>
       <div class="hu-place">${ordinal(next.rank)} place${next.isTop ? " — the CHAMPION" : ""}</div>
-      <div class="hu-name">${esc(next.team.name)}</div>
+      <div class="hu-name">${esc(teamLabel(next.team, next.idx))}</div>
       <div class="hu-line">Score <b>${money(next.team.score)}</b> &nbsp;·&nbsp; Final Jeopardy <b class="${dCls}">${dTxt}</b></div>
     </div>`;
   }
@@ -413,7 +540,7 @@ function finalWinnerHtml() {
     const isNext = i === nextIdx && revealed < N;
     return `<div class="hu-ref-row ${shown ? "shown" : ""} ${isNext ? "next" : ""}">
       <span class="r-place">${ordinal(s.rank)}</span>
-      <span class="r-name">${esc(s.team.name)}</span>
+      <span class="r-name">${esc(teamLabel(s.team, s.idx))}</span>
       <span class="r-score">${money(s.team.score)}</span>
       <span class="r-state">${shown ? "revealed" : isNext ? "next ▸" : "hidden"}</span>
     </div>`;
@@ -440,10 +567,10 @@ function previewHtml() {
 function scoresPanelHtml() {
   const teams = S.teams || [];
   if (!teams.length) return "";
-  const sorted = [...teams].sort((a, b) => b.score - a.score);
+  const sorted = teams.map((t, i) => ({ t, i })).sort((a, b) => b.t.score - a.t.score);
   return `<div class="pv-scores">
-    ${sorted.map(t => `<div class="pv-score">
-      <span class="pvs-name">${esc(t.name)}</span>
+    ${sorted.map(({ t, i }) => `<div class="pv-score">
+      <span class="pvs-name">${esc(teamLabel(t, i))}</span>
       <span class="pvs-val${t.score < 0 ? " neg" : ""}">${money(t.score)}</span>
     </div>`).join("")}
   </div>`;

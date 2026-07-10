@@ -14,10 +14,18 @@ The game **mirrors a copy of the "Jeopardy Questions" workbook** (template in
 `python3 tools/make_template.py`):
 
 - **📖 READ ME FIRST** tab — instructions for the question-writer.
-- **⚙️ Game Setup** tab — game title (shown on the TV), team names, players per team
-  (shown on the TV scoreboard), and an optional Final Jeopardy (category, question, and
-  answer). The optional **Final Jeopardy instructions** shown on the intro screen are
-  read from **cell D18** of this tab (leave it blank to just show the title).
+- **⚙️ Game Setup** tab — game title (shown on the TV), the house **rules**, the teams and
+  their players, and an optional Final Jeopardy (category, question, and answer). The
+  optional **Final Jeopardy instructions** shown on the intro screen are read from **cell
+  D18** of this tab (leave it blank to just show the title).
+  - The **rules** live in **cell D7** and appear on the **Rules screen** (see *Game night*
+    below). Separate each rule with **`##`** and they come out as a numbered list; leave D7
+    blank and the screen says so.
+  - The team column holds a **number, 1–6** — an *ID* for the group, not a name. It is
+    never shown on the TV. Teams choose their real names during the game and the host types
+    them into the control panel. (A sheet that already has real names there still works:
+    they're used as-is.) The **players** column is what identifies each group on the TV, so
+    fill it in.
 - **🗂 Question Bank** tab — the master list: every question gets an ID number. An answer
   of **UNKNOWN** means no preset answer — the host types it live in the control panel and
   releases it to the TV (every question also has a subtle "type a different answer"
@@ -57,7 +65,7 @@ Double`) is still auto-detected and supported.
 
 1. Open the game link on the laptop (this is the control panel).
 2. Paste the workbook link from your question-writer → **Load from Google Sheets**
-   (or use the built-in sample game). Title, teams, and players fill in automatically.
+   (or use the built-in sample game). Title, rules, teams, and players fill in automatically.
 3. Put the game on the TV. **Easiest (Chrome/Edge):** click **Display setup** and pick an option
    — deploy straight onto the external display, or the safe **black-screen-first** flow (put up a
    black screen, make it borderless with **F** while only black shows, then **Show the game**).
@@ -65,12 +73,41 @@ Double`) is still auto-detected and supported.
    **Or the manual way:** **Open display window** → drag it onto the TV → click **⛶ Fullscreen**
    (or press **F** in that window). External-display options only appear when a second screen is
    connected as an *extended* (not mirrored) display.
-4. Click **Start the game ▶** and run everything from the laptop. Answers appear on the TV
+4. Walk the room through the openers with the **TV screens** bar on the control panel
+   (see *Opening the show* below): **Title** → **Rules** → **Show teams** → **Show who
+   picks first**.
+5. Click **Start the game ▶** and run everything from the laptop. Answers appear on the TV
    for everyone — including you — at the same moment.
+
+## Opening the show
+
+The **TV screens** bar (on both the setup and the play screen) puts any of six screens on
+the TV, and highlights whichever one is up:
+
+- **Title** — the title card.
+- **Rules** — the numbered rules from cell D7 of the sheet.
+- **Show teams** — each group with its players and a **blank line where its name will go**,
+  under the heading *“Find your team and choose a team name!”*. As you type each name into
+  the **Teams** boxes on the control panel it appears on the TV straight away. The sheet's
+  team numbers are never shown — players find themselves by their own name.
+- **Show who picks first** — shuffles the teams into a **picking order**, shows who leads,
+  and lists the rotation. The order is drawn **once**: pressing the button again just shows
+  the same order (use **Reshuffle**, next to the scores, to redraw it).
+- **Black** and **Show the game** — the two failsafes, also in **Display setup**.
+
+Once the order exists, the **pick passes to the next team every time a clue is put away**.
+The picking team's pod on the TV scoreboard glows a subtle green, and the control panel says
+*Picking now: …* with **◀ / ▶** buttons to correct the turn if you mis-click.
+
+## 📞 Phone grandma
+
+Each team's card in **Scores** has a **📞 Phone grandma** button. Click it and *“(team) has
+phoned grandma!”* flashes briefly on the TV and stays up longer, with the team's players, on
+the Host View. **Every team gets one call per game** — the button greys out afterwards, and
+pressing it again asks you to confirm before showing the banner a second time.
 
 **Display setup** (button in the header, any time) also has **fade to the title screen**,
 **fade to black**, and **show the game** as failsafes if anything looks wrong on the TV mid-game.
-Those same three failsafes are also duplicated as a bar directly on the control panel.
 
 **True fullscreen:** a fullscreen deploy fills the screen, and the display window enters real
 fullscreen mode on the **first click or key press** in it — browsers won't let a normal site take
