@@ -798,9 +798,90 @@ function playBoardBeep(step, total) {
 function renderControl() {
   if (IS_DISPLAY) return;
   document.body.className = "control";
+  // Download every clue picture on THIS machine too (idempotent; js/img-cache.js),
+  // so the 🖼 Pictures card below can report whether they all actually arrive —
+  // before the TV ever needs them.
+  if (S.game) imgPrefetch(gameImageUrls(S.game));
   if (S.phase === "setup") renderSetup();
   else renderPlay();
   syncTimerAudio();
+}
+
+/* ---------------- 🖼 Pictures status (bottom of both screens) ----------------
+   The game's pictures are downloaded in the background the moment a game is
+   loaded. This card tells the host whether every requested picture actually
+   made it (with the clue it belongs to when one didn't), and shows ONE
+   already-downloaded picture as a visual sample — if you can see the sample,
+   pictures are genuinely working end to end. */
+
+/* Which clue(s) each picture URL belongs to — "Animal Kingdom — $200" — so a
+   failing link points straight at the sheet row to check. */
+function imageClueLabels() {
+  const map = {};
+  const add = (v, label) => {
+    (Array.isArray(v) ? v : v ? [v] : []).forEach(u => {
+      if (!u) return;
+      (map[u] = map[u] || []).push(label);
+    });
+  };
+  if (!S.game) return map;
+  const multiRound = S.game.rounds.length > 1;
+  S.game.rounds.forEach((r, ri) => r.categories.forEach(c => c.clues.forEach(cl => {
+    if (!cl) return;
+    const label = `${c.name} — $${cl.value}${multiRound ? ` (round ${ri + 1})` : ""}`;
+    add(cl.image, label);
+    add(cl.answerImage, label);
+  })));
+  if (S.game.final) { add(S.game.final.image, "Final Jeopardy"); add(S.game.final.answerImage, "Final Jeopardy"); }
+  return map;
+}
+
+function imgStatusInnerHtml() {
+  const urls = gameImageUrls(S.game);
+  const sum = imgCacheSummary(urls);
+  if (!sum.total) return "";
+  const labels = imageClueLabels();
+  const labelOf = (u) => [...new Set(labels[u] || [])].join(", ") || "—";
+
+  let line;
+  if (sum.ready === sum.total) {
+    line = `<p class="img-status-line ok">✅ All ${sum.total === 1 ? "1 picture is" : sum.total + " pictures are"} downloaded and ready.</p>`;
+  } else if (sum.trouble === 0) {
+    line = `<p class="img-status-line busy">⏳ Downloading pictures… <b>${sum.ready} of ${sum.total}</b> ready so far.</p>`;
+  } else {
+    line = `<p class="img-status-line warn">⚠️ <b>${sum.trouble} of ${sum.total}</b> picture${sum.total === 1 ? "" : "s"} ${sum.trouble === 1 ? "hasn't" : "haven't"} downloaded
+      (bad link? not shared?). Retrying automatically — check the 🖼 Image Bank link${sum.trouble === 1 ? "" : "s"} for:</p>
+      <ul class="img-status-fails">${sum.troubleUrls.map(u => `<li>${esc(labelOf(u))}</li>`).join("")}</ul>
+      ${sum.downloading ? `<p class="img-status-line busy">⏳ …and ${sum.downloading} still downloading.</p>` : ""}`;
+  }
+
+  const sample = sum.sample
+    ? `<div class="img-status-sample">
+        <img src="${esc(cachedImg(sum.sample))}" data-orig="${esc(sum.sample)}" alt="" onerror="imgRetry(this)">
+        <span class="hint">Sample — one of the downloaded pictures (${esc(labelOf(sum.sample))}).
+          If you can see it, pictures are working.</span>
+      </div>`
+    : `<p class="hint">The sample picture appears here once the first one finishes downloading.</p>`;
+
+  return line + sample;
+}
+
+function imgStatusCardHtml() {
+  if (!S.game || !gameImageUrls(S.game).length) return "";
+  return `<div class="card img-status">
+    <h2>🖼 Pictures</h2>
+    <div id="imgStatusInner">${imgStatusInnerHtml()}</div>
+  </div>`;
+}
+
+/* Keep the card live while downloads land in the background: every outcome
+   (downloaded / verified / failed) refreshes just the card's inside — never a
+   full re-render, so it can't steal focus from a name box mid-typing. */
+if (!IS_DISPLAY) {
+  window.imgCacheOnStatus = () => {
+    const el = document.getElementById("imgStatusInner");
+    if (el) el.innerHTML = imgStatusInnerHtml();
+  };
 }
 
 /* Read the team-name inputs back into S.teams. Safe to call anytime — a no-op
@@ -922,6 +1003,7 @@ function renderSetup() {
       ${netDevicesHtml()}
       ${S.game ? "" : `<p class="hint">Load questions first to enable Start.</p>`}
     </div>
+    ${imgStatusCardHtml()}
   </div>`;
 
   const bResume = document.getElementById("btnResume");
@@ -1140,6 +1222,7 @@ function renderPlay() {
         ? `<p class="hint">📩 The host is currently seeing: “<b>${esc(activeHostNote)}</b>”.</p>`
         : `<p class="hint">No note on the host screen right now.</p>`}
     </div>
+    ${imgStatusCardHtml()}
   </div>`;
 
   document.getElementById("btnReopenDisplay").onclick = () => { openDisplay(); renderControl(); };

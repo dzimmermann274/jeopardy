@@ -98,6 +98,37 @@ function imgPump() {
 function imgFirePin(url) {
   if (typeof window.imgCacheOnPin === "function") { try { window.imgCacheOnPin(url); } catch (e) {} }
 }
+/* Fired after EVERY download outcome (pinned / probe-verified / failed) — the
+   control panel's "Pictures" status card listens so its counts stay live. */
+function imgFireStatus(url) {
+  if (typeof window.imgCacheOnStatus === "function") { try { window.imgCacheOnStatus(url); } catch (e) {} }
+}
+
+/* One-look status of a URL list, for UI: how many are ready (pinned in memory,
+   or probe-verified renderable), still on their first download, or in trouble
+   (failed at least once; the background keeps retrying) — plus one URL that is
+   PROVEN displayable, to show as a visual sample. */
+function imgCacheSummary(urls) {
+  const out = { total: 0, ready: 0, downloading: 0, trouble: 0, troubleUrls: [], sample: null };
+  for (const u of urls || []) {
+    if (!u || !/^https?:/i.test(u)) continue;
+    out.total++;
+    const j = IMG_JOB[u];
+    const st = j ? j.state : null;
+    if (st === "pinned" || st === "nocors") {
+      out.ready++;
+      // prefer a pinned sample (guaranteed in-memory) over a probe-verified one
+      if (st === "pinned" && (!out.sample || !IMG_PIN[out.sample])) out.sample = u;
+      else if (!out.sample) out.sample = u;
+    } else if (st === "failed" || (j && j.tries > 0)) {
+      out.trouble++;
+      out.troubleUrls.push(u);
+    } else {
+      out.downloading++;                 // first attempt still in flight (or queued)
+    }
+  }
+  return out;
+}
 
 async function imgFetchOne(u) {
   const j = IMG_JOB[u];
@@ -113,6 +144,7 @@ async function imgFetchOne(u) {
     IMG_PIN[u] = URL.createObjectURL(blob);
     j.state = "pinned";
     imgFirePin(u);
+    imgFireStatus(u);
     return;
   } catch (e) { /* fall through to the <img> probe */ }
   // fetch() is refused by CORS on some hosts even though an <img> tag shows the
@@ -125,7 +157,7 @@ async function imgFetchOne(u) {
     im.onerror = () => resolve(false);
     im.src = u;
   });
-  if (probeOk) { j.state = "nocors"; imgFirePin(u); return; }
+  if (probeOk) { j.state = "nocors"; imgFirePin(u); imgFireStatus(u); return; }
   j.state = "failed";
   j.tries++;
   // 4s, 8s, 16s… capped at a minute between goes — and it never stops for good:
@@ -134,6 +166,7 @@ async function imgFetchOne(u) {
   j.nextAt = Date.now() + wait;
   clearTimeout(j.timer);
   j.timer = setTimeout(() => imgPrefetch([u]), wait + 100);
+  imgFireStatus(u);
 }
 
 /* Per-<img> retry ladder before the visible placeholder. Re-renders create
