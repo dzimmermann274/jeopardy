@@ -825,12 +825,20 @@ function fitClue() {
   }
 }
 
-/* A picture that fails to load must not vanish silently: show a visible
-   placeholder AND tell the control window so the host can adapt. */
-function imgFail(img) {
-  const src = img.src;
-  img.outerHTML = `<div class="clue-img-fail">⚠️ Picture couldn't load</div>`;
-  CHANNEL.postMessage({ type: "img-error", src });
+/* A picture that fails to load is retried by imgRetry (js/img-cache.js) and
+   only gives up after the whole retry ladder. These hooks tie that machinery
+   to the TV: a final failure is reported to the control window so the host
+   can adapt (describe it aloud / skip), and a background prefetch that lands
+   AFTER a failure repaints the screen so the picture comes back by itself.
+   Guarded to the display window — this file also loads (inert) in the
+   control window, whose #app must never be overwritten by renderDisplay. */
+if (IS_DISPLAY) {
+  window.onImgGiveUp = (src) => { CHANNEL.postMessage({ type: "img-error", src }); };
+  window.imgCacheOnPin = (src) => {
+    const failed = document.querySelector(".clue-img-fail");
+    if (failed) CHANNEL.postMessage({ type: "img-recovered", src });   // clears the control panel's warning
+    if (failed || document.querySelector("img[data-retry]")) renderDisplay();
+  };
 }
 
 /* Photo(s) blown up to fill the whole TV — the host's "Photos full screen"
@@ -838,7 +846,7 @@ function imgFail(img) {
    Toggling it off returns to the clue exactly as it was. */
 function photoZoomHtml(imgs) {
   return `<div class="photo-zoom${imgs.length > 1 ? " multi" : ""}">
-    ${imgs.map(u => `<img class="pz-img" src="${esc(u)}" alt="" onerror="imgFail(this)">`).join("")}</div>`;
+    ${imgs.map(u => `<img class="pz-img" src="${esc(cachedImg(u))}" data-orig="${esc(u)}" alt="" onerror="imgRetry(this)">`).join("")}</div>`;
 }
 
 /* The Final Jeopardy standings reveal (the "final-winner" view). S.finalReveal is
@@ -951,7 +959,7 @@ function clueScreenHtml(catLabel, clue, answer, revealed, image, animate, replac
 
   const imgsStyle = (imgMaxVh != null) ? ` style="max-height:${imgMaxVh}vh"` : "";
   const imgHtml = hasImg
-    ? `<div class="clue-imgs${imgs.length > 1 ? " multi" : ""}"${imgsStyle}>${imgs.map(u => `<img class="clue-img" src="${esc(u)}" alt="" onload="fitClue()" onerror="imgFail(this)">`).join("")}</div>`
+    ? `<div class="clue-imgs${imgs.length > 1 ? " multi" : ""}"${imgsStyle}>${imgs.map(u => `<img class="clue-img" src="${esc(cachedImg(u))}" data-orig="${esc(u)}" alt="" onload="fitClue()" onerror="imgRetry(this)">`).join("")}</div>`
     : "";
   // Render pre-fitted when we've sized this exact clue before (kills the timer /
   // score-edit re-render jolt). Keyed by the visible content so a different clue,

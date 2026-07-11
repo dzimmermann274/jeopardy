@@ -269,11 +269,12 @@ standard-library and only needed for cross-device play). Deployed as-is on GitHu
 | File | Responsibility |
 |------|----------------|
 | `index.html` | Shell; loads everything. Same page is both apps: plain = control panel, `#display` = TV view. |
-| `host.html` | The **Host view** page — a standalone, read-only companion screen (host's Mac/iPad). Loads `js/bus.js` then `js/host.js`; its styles are inline. |
+| `host.html` | The **Host view** page — a standalone, read-only companion screen (host's Mac/iPad). Loads `js/bus.js`, `js/img-cache.js`, then `js/host.js`; its styles are inline. |
 | `connect.html` | The **"Connect your devices"** page `server.py` auto-opens — each screen's address big with a QR code (from `/net-info`). Standalone; loads only `js/vendor/qrcode.js`, styles inline. |
 | `Start Jeopardy.command` / `Start Jeopardy (Windows).bat` | Double-click launchers that just run `python3 server.py` — for game night without a terminal. |
 | `styles.css` | All styles. Control-panel styles under `body.control`, TV styles under `body.display`. |
 | `js/bus.js` | The window/device sync transport: a drop-in `createBus()` wrapping BroadcastChannel (same-machine), plus an OPTIONAL LAN relay (SSE receive + POST send) auto-enabled only when served by `server.py`. Both `core.js` and `host.js` use it. |
+| `js/img-cache.js` | Bulletproof clue pictures: prefetches every picture once and pins it in memory as a `blob:` URL (`imgPrefetch`/`cachedImg`), and retries failed `<img>` loads with growing delays (`imgRetry`) before showing the placeholder — with automatic recovery if a picture comes back. Used by the TV and the Host view. |
 | `server.py` | Optional LAN relay + static file server (stdlib only) for cross-device play — see "Play across separate devices". Auto-opens `/connect`, serves the `/tv` `/host` `/connect` short redirects, reports `ip`/`name`/`port` at `/net-info`. Not needed for same-computer use. |
 | `js/core.js` | Shared state object `S`, the sync bus (`CHANNEL = createBus(...)`), localStorage save/resume, helpers. |
 | `js/data.js` | Google Sheets fetch (whole-workbook xlsx export; CSV fallbacks), workbook parser (tab-per-category), legacy row-list parser. |

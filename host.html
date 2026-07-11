@@ -394,6 +394,9 @@
   .pv-q { font-size: clamp(22px, 3.2vw, 44px); font-weight: 700; line-height: 1.3; }
   .pv-imgs { display: flex; flex-wrap: wrap; gap: 14px; margin: 20px 0 4px; justify-content: center; }
   .pv-img { max-width: 100%; max-height: 48vh; border-radius: 10px; object-fit: contain; }
+  /* imgRetry (js/img-cache.js) swaps this in when a preview picture is truly unreachable */
+  .clue-img-fail { background: rgba(0,0,0,.35); border: 2px dashed rgba(255,255,255,.4);
+    border-radius: 10px; padding: 18px 26px; font-size: clamp(15px, 2vw, 20px); color: #ffd8d8; }
   .pv-a-row { margin-top: 18px; font-size: clamp(20px, 2.8vw, 34px); }
   .pv-a-label { font-weight: 800; color: var(--muted); margin-right: .35em; }
   .pv-a-text { font-weight: 800; color: var(--gold); }
@@ -479,7 +482,8 @@
   <!-- full-screen category-reveal takeover, synced to the TV (js/host.js) -->
   <div id="host-catintro" hidden></div>
   <!-- bump ?v= on every deploy so browsers never run stale cached JS -->
-  <script src="js/bus.js?v=46"></script>
-  <script src="js/host.js?v=46"></script>
+  <script src="js/bus.js?v=47"></script>
+  <script src="js/img-cache.js?v=47"></script>
+  <script src="js/host.js?v=47"></script>
 </body>
 </html>

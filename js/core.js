@@ -151,6 +151,10 @@ CHANNEL.onmessage = (ev) => {
       const first = !displaySeenState;
       displaySeenState = true;
       S = msg.state;
+      // Pin every clue picture in memory the moment the game is known, so
+      // re-renders never re-ask Google and a mid-game Wi-Fi blip can't kill a
+      // picture (js/img-cache.js). Idempotent — already-pinned URLs are skipped.
+      if (S.game) imgPrefetch(gameImageUrls(S.game));
       if (first) primeDisplayOneShots();
       renderDisplay();
     }
@@ -175,6 +179,11 @@ CHANNEL.onmessage = (ev) => {
       // the display couldn't load a clue picture — surface it to the host
       window.__imgErrorSrc = msg.src;
       renderControl();
+    }
+    else if (msg.type === "img-recovered") {
+      // a picture the TV had written off has come back (its prefetch finally
+      // landed) — withdraw the control panel's failure warning if it was for it
+      if (window.__imgErrorSrc === msg.src) { window.__imgErrorSrc = null; renderControl(); }
     }
   }
 };

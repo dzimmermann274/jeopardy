@@ -124,6 +124,10 @@ CHANNEL.onmessage = (ev) => {
   if (!msg) return;
   if (msg.type === "state") {           // the game snapshot — our main input
     S = msg.state;
+    // Pin every clue picture in memory as soon as the game is known, so preview
+    // pictures load instantly and survive Wi-Fi blips / Google rate limiting
+    // (js/img-cache.js). Idempotent — already-pinned URLs are skipped.
+    if (S.game) imgPrefetch(gameImageUrls(S.game));
     // The FIRST snapshot is a starting point, not news: a Host View opened
     // mid-game must not replay a phone-a-grandma call that already happened.
     if (!gotState) lastPhoneTs = phoneAlertTs();
@@ -160,6 +164,15 @@ try {
 /* Same idea as the first-snapshot prime above, for the boot render below: whatever
    the seed already says has happened is history, not an event to announce. */
 lastPhoneTs = phoneAlertTs();
+if (S && S.game) imgPrefetch(gameImageUrls(S.game));   // pin pictures from the seed too
+
+/* A picture prefetch just landed: if anything on screen failed (placeholder) or
+   is mid-retry, rebuild so it paints from the pinned copy. lastContent is the
+   pre-pin HTML (it baked in the network URL), so cachedImg() now differing is
+   exactly what forces the rebuild. */
+window.imgCacheOnPin = () => {
+  if (document.querySelector(".clue-img-fail, img[data-retry]")) render();
+};
 
 /* ---------------- modes ---------------- */
 function setMode(m) {
@@ -602,7 +615,7 @@ function previewSelectionHtml(r) {
   } else {
     return `<div class="pv-empty">Tap a question above to preview it.</div>`;
   }
-  const imgs = images.map(u => `<img class="pv-img" src="${esc(u)}" alt="">`).join("");
+  const imgs = images.map(u => `<img class="pv-img" src="${esc(cachedImg(u))}" data-orig="${esc(u)}" alt="" onerror="imgRetry(this)">`).join("");
   return `<div class="pv-card">
     <div class="pv-card-head">${esc(head)}</div>
     <div class="pv-q">${fmtText(question)}</div>
