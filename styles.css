@@ -371,6 +371,30 @@ body.display.is-fullscreen .fs-prompt { display: none; }
 .pf-name.pk-pop { animation: pfSettle .5s cubic-bezier(.2,.85,.3,1); }
 @keyframes pfSettle { 0% { transform: scale(1.12); } 100% { transform: scale(1); } }
 
+/* ---- the wheel spin (runPickShuffle) ----
+   While a fresh order is being drawn, the numbered list becomes the WINDOW onto
+   a tall spinning drum (.pk-reel): the whole strip of row-cards translates
+   through it and decelerates onto the drawn order. The window keeps the list's
+   exact spot and size — overflow simply hides the rest of the drum. */
+.picks-list.pk-spin-active { overflow: hidden; position: relative; border-radius: 1.2vmin; }
+.pk-reel { display: flex; flex-direction: column; gap: inherit; will-change: transform, filter; }
+.pk-reel .pk-row { flex: none; animation: none; }   /* drum cards: no entrance fade to replay */
+.pk-reel .pk-row.pk-locked { animation: pkLock .5s cubic-bezier(.2,.85,.3,1); }   /* …but they DO flash on landing */
+.pk-ghost { opacity: .32; }        /* segments past the result — only ever peek during the overshoot */
+.pk-settled .pk-row { animation: none; }   /* the settled list swapped back after a spin appears in place */
+/* Drum-edge shading: darkened top/bottom sell the curvature of a wheel rolling
+   past the window; it fades away as the wheel comes to rest (pk-spin-live is
+   dropped on landing, pk-spin-active a moment later). */
+.picks-list.pk-spin-active::before,
+.picks-list.pk-spin-active::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 24%; z-index: 2;
+  pointer-events: none; opacity: 0; transition: opacity .5s ease;
+}
+.picks-list.pk-spin-active::before { top: 0; background: linear-gradient(180deg, rgba(2,4,50,.95), rgba(2,4,50,0)); }
+.picks-list.pk-spin-active::after { bottom: 0; background: linear-gradient(0deg, rgba(2,4,50,.95), rgba(2,4,50,0)); }
+.picks-list.pk-spin-live::before,
+.picks-list.pk-spin-live::after { opacity: 1; }
+
 /* ---- "(team) has phoned grandma!" — a brief banner over whatever's showing ---
    Above the curtain and the ⛶ button (a deliberate host action always lands),
    below the category-intro takeover. Auto-hides after ~4s (js/display.js). */

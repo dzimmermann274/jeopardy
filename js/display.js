@@ -109,7 +109,7 @@ function picksScreenHtml() {
     <div class="screen-title">THE PICKING ORDER</div>
     <div class="picks-first">
       <div class="pf-name">${esc(firstName || "—")}</div>
-      <div class="pf-shuffle">🎲 Shuffling team order…</div>
+      <div class="pf-shuffle">🎡 Spinning the wheel…</div>
       <div class="pf-tag">picks first!</div>
     </div>
     <ol class="picks-list">${rows}</ol>
@@ -524,88 +524,167 @@ function setCurtainLayer(elem, target, instant) {
   }
 }
 
-/* ---------------- "who picks first" shuffle reveal ----------------
-   The picks panel (picksScreenHtml) is rendered showing the FINAL order; this then
-   plays a one-time "randomizer" over it. The numbered podium slots hold still while
-   the team names tumble through them — and the tumble DECELERATES: names flip fast,
-   then slower and slower, the reels coming to rest one at a time from the bottom of
-   the list up, so the team that PICKS FIRST is the last to settle. No hard cut — it
-   just slows until it lands. Runs only on a fresh draw (renderCurtain gates it on a
-   rising pickShuffleTs); a re-render or a reopened TV just shows the settled order. */
+/* ---------------- "who picks first" wheel reveal ----------------
+   The picks panel (picksScreenHtml) is rendered showing the FINAL order; this
+   plays a one-time wheel-of-fortune spin over it, INSIDE the list's own box.
+   The numbered list becomes the WINDOW onto a tall spinning drum: a reel of
+   row-cards — each lap a full 1..N set with the team names re-scrambled —
+   scrolls through it, decelerating for ~4.2s, ticks just past the result and
+   springs back onto it (~4.6s all in). The big name up top is a live "slot 1"
+   readout: it flips with whatever card is passing the top slot, so it slows
+   and lands on the winner in perfect sync, then pops. A velocity-mapped blur
+   smears the drum at speed (pure cosmetics — the spin never depends on it),
+   and the drum-edge shading fades away as the wheel comes to rest.
+
+   Runs only on a fresh draw (renderCurtain gates it on a rising pickShuffleTs);
+   a re-render or a reopened TV just shows the settled order. Every alignment is
+   MEASURED from the laid-out drum (long names wrap and change row heights), so
+   the wheel always lands pixel-exact on the real rows. */
+let pickSettleTimer = null;    // pending "swap the pristine settled list back in" after landing
+let pickStepTimer = null;      // low-rate fallback driver (see schedule() in runPickShuffle)
+let pickSpinCleanup = null;    // undoes an in-flight spin's DOM takeover (set while one runs)
 function cancelPickShuffle() {
   if (pickShuffleRAF) { cancelAnimationFrame(pickShuffleRAF); pickShuffleRAF = null; }
+  clearTimeout(pickStepTimer); pickStepTimer = null;
+  clearTimeout(pickSettleTimer); pickSettleTimer = null;
+  if (pickSpinCleanup) { const fn = pickSpinCleanup; pickSpinCleanup = null; fn(); }
 }
 function runPickShuffle(panelEl) {
   cancelPickShuffle();
   const teams = S.teams || [];
   if (!pickOrderValid(S)) return;
   const order = S.pickOrder;
-  const nameEls = Array.from(panelEl.querySelectorAll(".pk-row .pk-name"));
+  const list = panelEl.querySelector(".picks-list");
   const pfName = panelEl.querySelector(".pf-name");
   // If the DOM isn't what we expect (a render race), leave the static order alone.
-  if (!pfName || nameEls.length !== order.length) return;
+  if (!list || !pfName || list.children.length !== order.length) return;
 
   const N = order.length;
-  const pool = teams.map(t => dispTeamName(t) || "—");          // names to flicker through
   const finalNames = order.map(ti => dispTeamName(teams[ti]) || "—");
-  const randName = () => pool[Math.floor(Math.random() * pool.length)];
 
-  // Show the "Shuffling…" label + rolling glow, hide the tag/foot until it lands.
+  // Freeze the window at its settled size and keep its exact markup to put back
+  // after the spin, so the screen ends byte-identical to a plain render.
+  const settledHtml = list.innerHTML;
+  list.style.height = list.getBoundingClientRect().height.toFixed(2) + "px";
+  list.classList.add("pk-spin-active", "pk-spin-live");
   panelEl.classList.add("picks-rolling");
 
-  const SPIN_MS = 2800;                                         // total roll time
-  // The flip interval grows from FAST to SLOW so the reels visibly slow to a stop
-  // (ease-in: stays lively, then slows hard in the final stretch).
-  const FAST = 45, SLOW = 380;
-  const intervalAt = (t) => {
-    const p = Math.min(1, t / SPIN_MS);
-    return FAST + (SLOW - FAST) * Math.pow(p, 2.4);
+  // Build the drum: LAPS full 1..N sets — the same numbered slots every lap with
+  // the names re-scrambled — ending on the real drawn order, plus two dimmed
+  // "next segment" ghosts so the overshoot shows drum, not void.
+  const LAPS = 1 + Math.max(4, Math.round(28 / N));            // ≈28–30 rows of travel
+  const rowHtml = (k, name, ghost) =>
+    `<div class="pk-row${ghost ? " pk-ghost" : ""}"><span class="pk-num">${k + 1}</span><span class="pk-name">${esc(name)}</span></div>`;
+  const cards = [];                                             // name per drum card, for the slot-1 readout
+  let html = "";
+  for (let lap = 0; lap < LAPS - 1; lap++) {
+    const perm = shuffledOrder(N);
+    for (let k = 0; k < N; k++) { cards.push(finalNames[perm[k]]); html += rowHtml(k, cards[cards.length - 1], false); }
+  }
+  for (let k = 0; k < N; k++) { cards.push(finalNames[k]); html += rowHtml(k, finalNames[k], false); }
+  const ghosts = shuffledOrder(N);
+  for (let k = 0; k < Math.min(2, N); k++) { cards.push(finalNames[ghosts[k]]); html += rowHtml(k, finalNames[ghosts[k]], true); }
+  list.innerHTML = `<div class="pk-reel">${html}</div>`;
+  const reel = list.firstElementChild;
+
+  // Whatever interrupts the spin (panel rebuild, an immediate re-draw) restores
+  // the settled screen completely — window, rows, and the big winner name.
+  pickSpinCleanup = () => {
+    panelEl.classList.remove("picks-rolling");
+    list.classList.remove("pk-spin-active", "pk-spin-live");
+    list.classList.add("pk-settled");            // restored rows appear in place — no entrance replay
+    list.style.height = "";
+    list.innerHTML = settledHtml;
+    pfName.textContent = finalNames[0];
   };
-  // Reels come to rest during the slow tail, bottom of the list first up to #1.
-  const freezeStart = SPIN_MS * 0.5, freezeEnd = SPIN_MS * 0.95;
-  const freezeAt = order.map((_, k) => {
-    const fromBottom = N <= 1 ? 1 : (N - 1 - k) / (N - 1);      // slot N-1 -> 0 (first to rest), slot 0 -> 1 (last)
-    return freezeStart + (freezeEnd - freezeStart) * fromBottom;
-  });
-  const pfLockAt = SPIN_MS;                                     // the big winner name lands last of all
 
-  const locked = new Array(N).fill(false);
-  let pfLocked = false;
-  let nextFlipAt = 0;
-  const t0 = Date.now();
+  // Measured geometry: card tops, the landing offset (final lap's first row at
+  // the top slot), and one card's pitch for the overshoot/readout. A window
+  // that isn't really laid out yet (minimized, mid-restore, hidden) measures
+  // ZERO — so measure again on each tick until the geometry is real, and only
+  // then start the clock (see step below).
+  let tops = null, target = 0, pitch = 60, OVER = 0, waitTicks = 0;
+  const measure = () => {
+    tops = Array.from(reel.children).map(el => el.offsetTop);
+    target = tops[(LAPS - 1) * N] || 0;
+    pitch = tops.length > 1 ? Math.max(1, tops[1] - tops[0]) : 60;
+    OVER = pitch * 0.38;                                        // tick a bit past, then spring back on
+    return target > 0;
+  };
 
-  const step = () => {
-    const t = Date.now() - t0;
-    const flip = t >= nextFlipAt;
-    if (flip) nextFlipAt = t + intervalAt(t);
+  const SPIN_MS = 4200, BACK_MS = 420;
+  let t0 = null, lastCard = -1, lastBlur = 0;
 
-    nameEls.forEach((el, k) => {
-      if (locked[k]) return;
-      if (t >= freezeAt[k]) {
-        locked[k] = true;
-        el.textContent = finalNames[k];
-        const row = el.closest(".pk-row");
-        if (row) row.classList.add("pk-locked");
-      } else if (flip) {
-        el.textContent = randName();
-      }
-    });
+  const paint = (off, blurPx) => {
+    reel.style.transform = `translate3d(0, ${(-off).toFixed(2)}px, 0)`;
+    // Motion blur, quantized to half-pixels so it's a handful of style writes per
+    // spin, and dropped entirely once the drum is slow enough to read.
+    const b = Math.round(Math.min(6, blurPx) * 2) / 2;
+    if (b !== lastBlur) { lastBlur = b; reel.style.filter = b >= 1 ? `blur(${b}px)` : ""; }
+    // The big name mirrors whatever card is passing the top slot right now.
+    let i = 0;
+    while (i + 1 < tops.length && tops[i + 1] <= off + pitch * 0.5) i++;
+    if (i !== lastCard) { lastCard = i; pfName.textContent = cards[i]; }
+  };
 
-    if (!pfLocked) {
-      if (t >= pfLockAt) {
-        pfLocked = true;
-        pfName.textContent = finalNames[0];
-        pfName.classList.add("pk-pop");
-        panelEl.classList.remove("picks-rolling");             // reveal "picks first!" + the footnote
-      } else if (flip) {
-        pfName.textContent = randName();
-      }
-    }
-
-    if (locked.every(Boolean) && pfLocked) { pickShuffleRAF = null; return; }
+  // The wheel is clocked by wall time, driven by rAF — with a coarse setTimeout
+  // understudy so a hidden/obscured window (where browsers starve rAF) still
+  // finishes the draw instead of freezing mid-drum. When rAF runs normally the
+  // timer is always cleared before it can fire, so it costs nothing.
+  const schedule = () => {
     pickShuffleRAF = requestAnimationFrame(step);
+    pickStepTimer = setTimeout(() => {
+      if (pickShuffleRAF) { cancelAnimationFrame(pickShuffleRAF); pickShuffleRAF = null; }
+      step(performance.now());
+    }, 300);
   };
-  pickShuffleRAF = requestAnimationFrame(step);
+  const step = (now) => {
+    clearTimeout(pickStepTimer); pickStepTimer = null;
+    if (t0 == null) {
+      // First real tick starts the clock — but only once the drum has actual
+      // geometry. A display that stays unmeasurable (kept minimized) gives up
+      // after a while and simply shows the settled order.
+      if (!measure()) {
+        if (++waitTicks > 40) {
+          pickShuffleRAF = null;
+          const fn = pickSpinCleanup; pickSpinCleanup = null;
+          if (fn) fn();
+          return;
+        }
+        schedule();
+        return;
+      }
+      t0 = now;
+    }
+    const t = now - t0;
+    if (t < SPIN_MS) {
+      const p = t / SPIN_MS;                                    // quartic ease-out: flies, then crawls in
+      const off = (target + OVER) * (1 - Math.pow(1 - p, 4));
+      const v = 4 * (target + OVER) * Math.pow(1 - p, 3) / SPIN_MS;   // px per ms
+      paint(off, v * 2.4);
+    } else if (t < SPIN_MS + BACK_MS) {
+      const q = 1 - (t - SPIN_MS) / BACK_MS;                    // the ratchet: snap back onto the result
+      paint(target + OVER * q * q, 0);
+    } else {
+      paint(target, 0);
+      pickShuffleRAF = null;
+      // Landed: flash the winning rows, pop the winner, reveal the tag + footnote,
+      // let the drum shading fade — then quietly swap the pristine list back in.
+      for (let k = 0; k < N; k++) reel.children[(LAPS - 1) * N + k].classList.add("pk-locked");
+      pfName.textContent = finalNames[0];
+      pfName.classList.add("pk-pop");
+      panelEl.classList.remove("picks-rolling");
+      list.classList.remove("pk-spin-live");
+      pickSettleTimer = setTimeout(() => {
+        pickSettleTimer = null;
+        const fn = pickSpinCleanup; pickSpinCleanup = null;
+        if (fn) fn();
+      }, 700);
+      return;
+    }
+    schedule();
+  };
+  schedule();
 }
 
 /* ---------------- "…has phoned grandma!" ----------------
