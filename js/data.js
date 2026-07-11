@@ -23,6 +23,8 @@
    { title, rounds: [{ name, categories: [{ name, clues: [{value, clue, answer, dd, used}] }] }],
      final: {category, clue, answer, unknown, instructions} | null,
      rules: "",                              // the Rules screen's text (## = new line)
+     bump: 0,                                // "turn bonus": extra points the picking team
+                                             // earns for a correct answer (Game Setup F7)
      teams: [{id, name, players: []}] }      // teams from the sheet; `name` is blank
                                              // when the sheet only gave a number (see below)
    ============================================================ */
@@ -268,10 +270,18 @@ function cellText(ws, addr) {
    ("007"), and the trailing decimals a number-formatted cell shows ("3.00"). */
 const TEAM_ID_CELL = /^(?:team\s*)?(\d{1,3})(?:\.0+)?$/i;
 
-/* The Game Setup tab -> { title, subtitle, rules, categoryNames, teams, final }. */
+/* A cell meant to hold a dollar amount ("200", "$500", "1,000", "200.00") -> an
+   integer; anything blank or non-numeric -> 0. Used for the turn-bonus cell. */
+function parseMoneyCell(s) {
+  if (!s) return 0;
+  const n = parseInt(String(s).replace(/[^0-9.\-]/g, ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/* The Game Setup tab -> { title, subtitle, rules, bump, categoryNames, teams, final }. */
 function parseSetupTab(ws) {
   const rows = sheetRows(ws);
-  const out = { title: "", subtitle: "", rules: "", categoryNames: [], teams: [], final: null };
+  const out = { title: "", subtitle: "", rules: "", bump: 0, categoryNames: [], teams: [], final: null };
 
   const findValue = (re) => {
     for (const r of rows) {
@@ -302,6 +312,11 @@ function parseSetupTab(ws) {
   // Setup D7. Read it directly by address, like C5/E4/D18, since sheet_to_json
   // indexes relative to the used range and can't reliably hit a fixed cell.
   out.rules = cellText(ws, "D7");
+
+  // The "turn bonus" (bump): extra points the team whose turn it is to pick earns
+  // for a CORRECT answer on their turn. Lives in Game Setup F7 — a dedicated cell
+  // read by address, like D7/C5. Blank or non-numeric => 0 (no bonus).
+  out.bump = parseMoneyCell(cellText(ws, "F7"));
 
   const teamHeaderIdx = rows.findIndex(r => r.some(c => /team\s*name/i.test(c)));
   if (teamHeaderIdx !== -1) {
@@ -390,6 +405,7 @@ function buildGameFromWorkbook(wb) {
       title: (setup && setup.title) || "Jeopardy!",
       subtitle: (setup && setup.subtitle) || "",
       rules: (setup && setup.rules) || "",
+      bump: (setup && setup.bump) || 0,
       rounds: [{ name: "Jeopardy!", categories }],
       final: (setup && setup.final) || null,
       teams: (setup && setup.teams) || [],
@@ -475,7 +491,7 @@ function buildGameFromRows(rows) {
     return { name: label, categories };
   });
   if (!rounds.length) throw new Error("The sheet only has a Final Jeopardy row — add regular question rows too.");
-  return { title: "Custom Game", subtitle: "", rules: "", rounds, final, teams: [] };
+  return { title: "Custom Game", subtitle: "", rules: "", bump: 0, rounds, final, teams: [] };
 }
 
 /* ---------------- fetching ---------------- */

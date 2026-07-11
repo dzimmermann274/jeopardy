@@ -6,6 +6,10 @@ const SAMPLE_GAME = {
   // Demo text for the Rules screen. In a real game this comes from cell D7 of the
   // Game Setup tab — not from the code. "##" starts a new rule.
   rules: "Teams take turns picking a category and a dollar amount.##Confer with your team, then answer out loud — the host decides.##Right answer: add the money. Wrong answer: lose it.##A Daily Double lets that team wager anything up to its score.##Each team may phone grandma ONCE for a hint.##Highest score after Final Jeopardy wins.",
+  // "Turn bonus" (bump): extra points the team whose turn it is earns for a correct
+  // answer. In a real game this comes from cell F7 of the Game Setup tab; the host
+  // can change it live on the control panel. 0 turns the feature off.
+  bump: 200,
   // Teams as the sheet gives them: a number (the ID) and the players. The name is
   // blank — the players choose it during the game and the host types it in.
   teams: [

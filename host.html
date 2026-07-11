@@ -327,6 +327,10 @@
     padding: clamp(14px, 2.4vw, 24px) clamp(18px, 3vw, 32px);
     box-shadow: 0 20px 60px rgba(0,0,0,.55);
   }
+  /* display:flex above is an always-present author rule, so it would override the
+     UA [hidden] rule and keep the card on screen forever (js sets el.hidden=true to
+     dismiss it after ~10s). Re-assert none for the hidden state so it can actually go. */
+  .host-phone[hidden] { display: none; }
   .hp-phone { font-size: clamp(34px, 6vw, 64px); line-height: 1; flex: none; }
   .hp-body { min-width: 0; }
   .hp-name {
@@ -475,7 +479,7 @@
   <!-- full-screen category-reveal takeover, synced to the TV (js/host.js) -->
   <div id="host-catintro" hidden></div>
   <!-- bump ?v= on every deploy so browsers never run stale cached JS -->
-  <script src="js/bus.js?v=43"></script>
-  <script src="js/host.js?v=43"></script>
+  <script src="js/bus.js?v=46"></script>
+  <script src="js/host.js?v=46"></script>
 </body>
 </html>

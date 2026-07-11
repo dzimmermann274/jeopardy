@@ -47,6 +47,9 @@ function freshState() {
     pickOrder: [],           // shuffled team indexes — the rotation for who picks the next clue.
                              //   Empty until "Show who picks first" draws it (once per game).
     pickIdx: 0,              // pointer into pickOrder: whose turn it is to pick right now
+    pickShuffleTs: 0,        // one-shot trigger: bumped when a FRESH order is drawn so the TV
+                             //   plays its shuffle-into-place reveal once (a reopened TV, seeing
+                             //   the same ts, shows the settled order without re-rolling it)
     phones: {},              // teamIdx -> true once that team has spent its one "phone grandma"
     phoneAlert: null,        // {teamIdx, name, ts} — the one-shot "…has phoned grandma!" banner.
                              //   The TV and Host View fire on a CHANGED ts, so an ordinary
@@ -75,6 +78,7 @@ function save() {
 function normalizeState(s) {
   if (!Array.isArray(s.pickOrder)) s.pickOrder = [];
   if (typeof s.pickIdx !== "number" || !isFinite(s.pickIdx)) s.pickIdx = 0;
+  if (typeof s.pickShuffleTs !== "number" || !isFinite(s.pickShuffleTs)) s.pickShuffleTs = 0;
   if (!s.phones || typeof s.phones !== "object") s.phones = {};
   if (!s.phoneAlert || typeof s.phoneAlert !== "object") s.phoneAlert = null;
   (s.teams || []).forEach((t, i) => {

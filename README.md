@@ -21,6 +21,11 @@ The game **mirrors a copy of the "Jeopardy Questions" workbook** (template in
   - The **rules** live in **cell D7** and appear on the **Rules screen** (see *Game night*
     below). Separate each rule with **`##`** and they come out as a numbered list; leave D7
     blank and the screen says so.
+  - The **turn bonus** ("bump") lives in **cell F7** — extra points the team whose *turn it
+    is to pick* earns for a **correct** answer on their turn (a reward for going first each
+    round). Put a dollar amount there (e.g. `200`), or leave it blank / `0` for no bonus.
+    It's built into the **✓ Right** button when you score a clue, and you can change it live
+    on the control panel (under **Scores → Turn bonus**).
   - The team column holds a **number, 1–6** — an *ID* for the group, not a name. It is
     never shown on the TV. Teams choose their real names during the game and the host types
     them into the control panel. (A sheet that already has real names there still works:

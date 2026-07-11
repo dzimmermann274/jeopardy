@@ -298,7 +298,12 @@ function showWhoPicksFirst() {
   if (!S.teams.length) { customAlert("Add some teams first."); return; }
   const show = () => {
     update(() => {
-      if (!pickOrderValid(S)) { S.pickOrder = shuffledOrder(S.teams.length); S.pickIdx = 0; }
+      // Draw the order ONCE. Only a genuinely fresh draw arms the TV's shuffle
+      // reveal — coming back to this screen mid-game shows the settled order.
+      if (!pickOrderValid(S)) {
+        S.pickOrder = shuffledOrder(S.teams.length); S.pickIdx = 0;
+        S.pickShuffleTs = Math.max(Date.now(), (S.pickShuffleTs || 0) + 1);
+      }
       S.stage = "picks";
     });
     if (screensOv) renderScreensDialog();
@@ -322,7 +327,10 @@ function reshufflePickOrder() {
   customConfirm("Draw a brand-new picking order? Whose turn it is resets to the top of the new order.",
     { okText: "Shuffle again" }).then(ok => {
     if (!ok) return;
-    update(() => { S.pickOrder = shuffledOrder(S.teams.length); S.pickIdx = 0; });
+    update(() => {
+      S.pickOrder = shuffledOrder(S.teams.length); S.pickIdx = 0;
+      S.pickShuffleTs = Math.max(Date.now(), (S.pickShuffleTs || 0) + 1);   // re-arm the TV's shuffle reveal
+    });
   });
 }
 
@@ -332,6 +340,17 @@ function stepPicker(delta) {
   if (!pickOrderValid(S)) return;
   const n = S.pickOrder.length;
   S.pickIdx = (((S.pickIdx + delta) % n) + n) % n;
+}
+
+/* The game's "turn bonus" amount (from Game Setup F7, editable on the panel). */
+function bumpAmount() { const b = S.game && +S.game.bump; return Number.isFinite(b) && b > 0 ? Math.round(b) : 0; }
+/* Extra points team `teamIdx` earns for a CORRECT answer on the ACTIVE clue: the
+   bonus, but only for the team whose turn it is to pick. 0 for everyone else (and
+   whenever no bonus is set). Recomputed on undo the same way `amount` is, so the
+   two always agree within a clue. */
+function clueBumpFor(teamIdx) {
+  const b = bumpAmount();
+  return (b > 0 && teamIdx === currentPicker(S)) ? b : 0;
 }
 
 /* Deploy the game onto the external display. `stage` is the curtain the new
@@ -1001,7 +1020,8 @@ function turnBarHtml() {
     return `<div class="turn-bar">
       <span class="turn-label">Picking order</span>
       <span class="hint">Not drawn yet — click <b>Show who picks first</b> in the TV screens bar above.</span>
-    </div>`;
+    </div>
+    ${bumpBarHtml()}`;
   }
   const p = currentPicker(S);
   const order = S.pickOrder.map((ti, k) => `${k + 1}. ${esc(teamLabel(S.teams[ti], ti))}`).join(" · ");
@@ -1012,6 +1032,22 @@ function turnBarHtml() {
     <button class="btn small" id="btnPickNext" title="Forward one turn">▶</button>
     <button class="btn small" id="btnPickShuffle" title="Draw a brand-new order">Reshuffle</button>
     <span class="hint turn-order">${order}</span>
+  </div>
+  ${bumpBarHtml()}`;
+}
+
+/* The editable "turn bonus" field. Pulls its starting value from Game Setup F7
+   (game.bump); the host can change it live here. It's the extra the picking team
+   earns for a correct answer on their turn — folded into the ✓ Right button. */
+function bumpBarHtml() {
+  const b = bumpAmount();
+  return `<div class="turn-bar bump-bar">
+    <span class="turn-label">Turn bonus</span>
+    <span class="bump-inp">$<input type="number" id="bumpInput" min="0" step="50" value="${b}"
+      title="From Game Setup cell F7 — edit anytime"></span>
+    <span class="hint">${b > 0
+      ? `the team whose turn it is gets an extra <b>${money(b)}</b> for a right answer`
+      : `set an amount to give the picking team a bonus for a right answer (0 = off)`}</span>
   </div>`;
 }
 
@@ -1228,6 +1264,13 @@ function renderPlay() {
   if (bNext) bNext.onclick = () => update(() => stepPicker(1));
   const bShuf = document.getElementById("btnPickShuffle");
   if (bShuf) bShuf.onclick = reshufflePickOrder;
+  // Turn bonus: commit on blur/Enter (onchange) so re-rendering never steals focus
+  // mid-type. Stored on the game so it persists and syncs like the rest of it.
+  const bumpInp = document.getElementById("bumpInput");
+  if (bumpInp) bumpInp.onchange = (e) => {
+    const v = Math.max(0, Math.round(+e.target.value) || 0);
+    update(() => { if (S.game) S.game.bump = v; });
+  };
 
   /* Host view: open the passive screen, and send/clear the "Note from Danny". */
   const bOpenHostView = document.getElementById("btnOpenHostView");
@@ -1329,7 +1372,10 @@ function renderPlay() {
       const amount = S.dd && S.dd.wager != null ? S.dd.wager : c.value;
       update(() => {
         S.awarded[i] = sign;
-        S.teams[+i].score += (sign === "+" ? amount : -amount);
+        // The picking team gets the turn bonus ON TOP of the clue value, but only
+        // for a correct answer (a wrong answer just loses the value, no bonus).
+        const bump = sign === "+" ? clueBumpFor(+i) : 0;
+        S.teams[+i].score += (sign === "+" ? amount + bump : -amount);
       });
     });
     app.querySelectorAll("[data-unaward]").forEach(b => b.onclick = () => {
@@ -1337,7 +1383,8 @@ function renderPlay() {
       const c = activeClue(); if (!c || !S.awarded[i]) return;
       const amount = S.dd && S.dd.wager != null ? S.dd.wager : c.value;
       update(() => {
-        S.teams[+i].score -= (S.awarded[i] === "+" ? amount : -amount);
+        const bump = S.awarded[i] === "+" ? clueBumpFor(+i) : 0;
+        S.teams[+i].score -= (S.awarded[i] === "+" ? amount + bump : -amount);
         delete S.awarded[i];
       });
     });
@@ -1492,18 +1539,21 @@ function boardControlHtml(r) {
   </div>`;
 }
 
-function awardRowHtml(teamIdx, name, amount, awardedSign) {
+function awardRowHtml(teamIdx, name, amount, awardedSign, bump) {
+  bump = bump || 0;                          // > 0 only for the picking team, when a bonus is set
+  const rightAmt = amount + bump;            // a correct answer pays value + turn bonus
+  const bonusTag = bump > 0 ? `<span class="bump-tag" title="Turn bonus — it's this team's turn to pick">🎯 +${money(bump)} turn bonus</span>` : "";
   if (awardedSign) {
-    const applied = awardedSign === "+" ? `+${money(amount)}` : `−${money(amount)}`;
-    return `<div class="award-row">
+    const applied = awardedSign === "+" ? `+${money(rightAmt)}` : `−${money(amount)}`;
+    return `<div class="award-row${bump > 0 ? " is-picker-row" : ""}">
       <span class="aw-name">${esc(name)}</span>
-      <span class="hint">${awardedSign === "+" ? "✓ scored " : "✗ scored "}${applied}</span>
+      <span class="hint">${awardedSign === "+" ? "✓ scored " : "✗ scored "}${applied}${awardedSign === "+" ? " " + bonusTag : ""}</span>
       <button class="btn small" data-unaward="${teamIdx}">Undo</button>
     </div>`;
   }
-  return `<div class="award-row">
-    <span class="aw-name">${esc(name)}</span>
-    <button class="btn good small" data-award="${teamIdx}:+">✓ Right (+${money(amount)})</button>
+  return `<div class="award-row${bump > 0 ? " is-picker-row" : ""}">
+    <span class="aw-name">${esc(name)} ${bonusTag}</span>
+    <button class="btn good small" data-award="${teamIdx}:+">✓ Right (+${money(rightAmt)})</button>
     <button class="btn bad small" data-award="${teamIdx}:-">✗ Wrong (−${money(amount)})</button>
   </div>`;
 }
@@ -1575,7 +1625,7 @@ function clueControlHtml(cl, isDD) {
     ${S.revealed ? `
     <h2 style="margin-top:16px">Award points ${ddTeam ? "(wager: " + money(amount) + ")" : "(" + money(amount) + ")"}</h2>
     ${(ddTeam ? [S.dd.teamIdx] : S.teams.map((_, i) => i)).map((i) =>
-      awardRowHtml(i, teamLabel(S.teams[i], i), amount, S.awarded[i])
+      awardRowHtml(i, teamLabel(S.teams[i], i), amount, S.awarded[i], clueBumpFor(i))
     ).join("")}` : ""}
   </div>`;
 }

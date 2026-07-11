@@ -109,6 +109,7 @@ function picksScreenHtml() {
     <div class="screen-title">THE PICKING ORDER</div>
     <div class="picks-first">
       <div class="pf-name">${esc(firstName || "—")}</div>
+      <div class="pf-shuffle">🎲 Shuffling team order…</div>
       <div class="pf-tag">picks first!</div>
     </div>
     <ol class="picks-list">${rows}</ol>
@@ -248,6 +249,7 @@ function renderDisplay() {
       <div class="fj-content">
         <div class="fj-cat-word${firstOfView ? " anim-catword" : ""}">FINAL JEOPARDY — CATEGORY</div>
         <div class="fj-cat-name${firstOfView ? " anim-catname" : ""}">${fmtText(S.game.final.category)}</div>
+        <div class="fj-wager-note${firstOfView ? " anim-wagernote" : ""}">Decide your wagers and disclose them to the host.</div>
       </div>
       ${firstOfView ? `<div class="fj-cat-big"><span>FINAL JEOPARDY<br>CATEGORY</span></div>` : ""}
     </div>`;
@@ -301,14 +303,18 @@ function renderDisplay() {
   // Whose turn it is to pick: their pod glows a subtle green in the strip below the
   // board. -1 (no order drawn yet) simply matches nobody.
   const picker = currentPicker(S);
+  // Once the order is drawn, the strip lists the teams left-to-right in that picking
+  // order, so the board itself shows who goes when (the green pod then travels along
+  // it as turns pass). Before the draw it stays in the natural team order.
+  const stripOrder = pickOrderValid(S) ? S.pickOrder : S.teams.map((_, i) => i);
   app.innerHTML = `
     <div class="disp-stage">
       ${view}
       ${showStrip ? `<div class="scores-strip">
-        ${S.teams.map((t, i) => `<div class="score-pod${i === picker ? " is-picking" : ""}">
+        ${stripOrder.map(ti => { const t = S.teams[ti]; return `<div class="score-pod${ti === picker ? " is-picking" : ""}">
           <div class="sp-name">${esc(dispTeamName(t) || "—")}</div>
           <div class="sp-score ${t.score < 0 ? "neg" : ""}">${money(t.score)}</div>
-        </div>`).join("")}</div>` : ""}
+        </div>`; }).join("")}</div>` : ""}
     </div>
     <button class="fs-btn" id="btnFS">⛶ Fullscreen (F)</button>
     ${wantFs && !fsElement() ? `<div class="fs-prompt">▶ Click this screen<br>(or press any key)<br>for true full screen</div>` : ""}
@@ -456,6 +462,8 @@ function stagePanelHtml(stage) {
   }
 }
 let curtainPanelHtml = null;   // what the panel layer currently shows (skip identical rebuilds)
+let lastPickShuffleTs = 0;     // highest pickShuffleTs we've reacted to (see primeDisplayOneShots)
+let pickShuffleRAF = null;     // requestAnimationFrame handle for the in-flight shuffle reveal, if any
 
 function renderCurtain() {
   const stage = S.stage || "game";
@@ -480,7 +488,18 @@ function renderCurtain() {
   // Rebuild only on a real difference, so an unrelated re-render can't flicker it.
   if (panel) {
     const html = stagePanelHtml(stage);
-    if (html !== curtainPanelHtml) { panelEl.innerHTML = html; curtainPanelHtml = html; }
+    // A rebuild replaces the nodes a running shuffle animates — stop it first so it
+    // can't keep writing into orphaned elements.
+    if (html !== curtainPanelHtml) { cancelPickShuffle(); panelEl.innerHTML = html; curtainPanelHtml = html; }
+  }
+
+  // A freshly-drawn picking order tumbles into place, once. Gated on a rising
+  // pickShuffleTs so ordinary re-renders (or returning to this screen mid-game)
+  // just show the settled order. Placed before the stage-unchanged early-return so
+  // an explicit reshuffle while already on this screen still re-rolls.
+  if (stage === "picks" && (S.pickShuffleTs || 0) > lastPickShuffleTs) {
+    lastPickShuffleTs = S.pickShuffleTs || 0;
+    runPickShuffle(panelEl);
   }
 
   const prev = el.dataset.stage || "game";
@@ -505,6 +524,90 @@ function setCurtainLayer(elem, target, instant) {
   }
 }
 
+/* ---------------- "who picks first" shuffle reveal ----------------
+   The picks panel (picksScreenHtml) is rendered showing the FINAL order; this then
+   plays a one-time "randomizer" over it. The numbered podium slots hold still while
+   the team names tumble through them — and the tumble DECELERATES: names flip fast,
+   then slower and slower, the reels coming to rest one at a time from the bottom of
+   the list up, so the team that PICKS FIRST is the last to settle. No hard cut — it
+   just slows until it lands. Runs only on a fresh draw (renderCurtain gates it on a
+   rising pickShuffleTs); a re-render or a reopened TV just shows the settled order. */
+function cancelPickShuffle() {
+  if (pickShuffleRAF) { cancelAnimationFrame(pickShuffleRAF); pickShuffleRAF = null; }
+}
+function runPickShuffle(panelEl) {
+  cancelPickShuffle();
+  const teams = S.teams || [];
+  if (!pickOrderValid(S)) return;
+  const order = S.pickOrder;
+  const nameEls = Array.from(panelEl.querySelectorAll(".pk-row .pk-name"));
+  const pfName = panelEl.querySelector(".pf-name");
+  // If the DOM isn't what we expect (a render race), leave the static order alone.
+  if (!pfName || nameEls.length !== order.length) return;
+
+  const N = order.length;
+  const pool = teams.map(t => dispTeamName(t) || "—");          // names to flicker through
+  const finalNames = order.map(ti => dispTeamName(teams[ti]) || "—");
+  const randName = () => pool[Math.floor(Math.random() * pool.length)];
+
+  // Show the "Shuffling…" label + rolling glow, hide the tag/foot until it lands.
+  panelEl.classList.add("picks-rolling");
+
+  const SPIN_MS = 2800;                                         // total roll time
+  // The flip interval grows from FAST to SLOW so the reels visibly slow to a stop
+  // (ease-in: stays lively, then slows hard in the final stretch).
+  const FAST = 45, SLOW = 380;
+  const intervalAt = (t) => {
+    const p = Math.min(1, t / SPIN_MS);
+    return FAST + (SLOW - FAST) * Math.pow(p, 2.4);
+  };
+  // Reels come to rest during the slow tail, bottom of the list first up to #1.
+  const freezeStart = SPIN_MS * 0.5, freezeEnd = SPIN_MS * 0.95;
+  const freezeAt = order.map((_, k) => {
+    const fromBottom = N <= 1 ? 1 : (N - 1 - k) / (N - 1);      // slot N-1 -> 0 (first to rest), slot 0 -> 1 (last)
+    return freezeStart + (freezeEnd - freezeStart) * fromBottom;
+  });
+  const pfLockAt = SPIN_MS;                                     // the big winner name lands last of all
+
+  const locked = new Array(N).fill(false);
+  let pfLocked = false;
+  let nextFlipAt = 0;
+  const t0 = Date.now();
+
+  const step = () => {
+    const t = Date.now() - t0;
+    const flip = t >= nextFlipAt;
+    if (flip) nextFlipAt = t + intervalAt(t);
+
+    nameEls.forEach((el, k) => {
+      if (locked[k]) return;
+      if (t >= freezeAt[k]) {
+        locked[k] = true;
+        el.textContent = finalNames[k];
+        const row = el.closest(".pk-row");
+        if (row) row.classList.add("pk-locked");
+      } else if (flip) {
+        el.textContent = randName();
+      }
+    });
+
+    if (!pfLocked) {
+      if (t >= pfLockAt) {
+        pfLocked = true;
+        pfName.textContent = finalNames[0];
+        pfName.classList.add("pk-pop");
+        panelEl.classList.remove("picks-rolling");             // reveal "picks first!" + the footnote
+      } else if (flip) {
+        pfName.textContent = randName();
+      }
+    }
+
+    if (locked.every(Boolean) && pfLocked) { pickShuffleRAF = null; return; }
+    pickShuffleRAF = requestAnimationFrame(step);
+  };
+  pickShuffleRAF = requestAnimationFrame(step);
+}
+
 /* ---------------- "…has phoned grandma!" ----------------
    A brief banner over whatever the TV is showing — the game is never interrupted.
    S.phoneAlert.ts is the trigger: it changes only when the host presses a team's
@@ -519,6 +622,7 @@ let phoneToastTimer = null;
 
 function primeDisplayOneShots() {
   lastPhoneTs = (S.phoneAlert && S.phoneAlert.ts) || 0;
+  lastPickShuffleTs = S.pickShuffleTs || 0;   // a TV opened onto an already-drawn order shows it settled, no re-roll
 }
 
 function renderPhoneToast() {

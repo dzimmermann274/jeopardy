@@ -97,6 +97,17 @@ body.control { background: var(--panel-bg); color: var(--panel-text); min-height
 .turn-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--panel-dim); }
 .turn-now { font-weight: 800; font-size: 16px; color: #3ddc84; }
 .turn-order { flex: 1 1 260px; min-width: 200px; text-align: right; }
+/* the "turn bonus" (bump) row and its inline number field */
+.bump-bar { margin-top: -4px; }
+.bump-inp { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--value-gold); }
+.bump-inp input { width: 90px; background: #12141f; color: var(--value-gold); font-weight: 800;
+  border: 1px solid #3a3f58; border-radius: 8px; padding: 6px 10px; font-size: 15px; }
+.bump-bar .hint { flex: 1 1 240px; min-width: 200px; }
+.bump-bar .hint b { color: var(--value-gold); }
+/* the picking team's scoring row — flag it so the host sees the bonus applies */
+.award-row.is-picker-row { background: rgba(61,220,132,.08); border: 1px solid rgba(61,220,132,.35);
+  border-radius: 8px; padding: 6px 10px; }
+.bump-tag { color: #3ddc84; font-weight: 700; white-space: nowrap; }
 
 /* clue control */
 .clue-box { background: #191c2b; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
@@ -331,6 +342,34 @@ body.display.is-fullscreen .fs-prompt { display: none; }
   min-width: 2ch; text-align: center; text-shadow: .05em .05em 0 #000; }
 .pk-name { color: #fff; font-size: 2.2vw; font-weight: 700; word-break: break-word; }
 .picks-foot { color: #c7d0ff; font-size: 1.6vw; margin-top: 3vh; letter-spacing: .06em; }
+/* the "Shuffling team order…" status line — occupies the "picks first!" slot, so
+   swapping between the two never shifts the layout. */
+.pf-shuffle { opacity: 0; color: #ffe27a; font-size: 2.4vw; margin-top: .8vh;
+  letter-spacing: .12em; text-transform: uppercase; font-weight: 800;
+  text-shadow: .04em .04em 0 #000, 0 0 2.4vmin rgba(0,0,0,.55); }
+
+/* the shuffle reveal (runPickShuffle): while "rolling", the tumbling names carry a
+   gold glow (a lively highlight, not a dim) that eases smoothly away as each reel
+   settles — so the effect slows to a rest instead of cutting out. The tag/footnote
+   that explain the settled order stay hidden until the winner lands. */
+.pk-name, .pf-name { transition: color .35s ease, text-shadow .35s ease; }
+.pf-tag, .picks-foot, .pf-shuffle { transition: opacity .45s ease; }
+.picks-rolling .pk-name,
+.picks-rolling .pf-name { color: #ffe27a; text-shadow: 0 0 1.6vmin rgba(245,197,24,.65); }
+.pk-row.pk-locked .pk-name { color: #fff; text-shadow: none; }   /* a settled reel goes solid white */
+.picks-rolling .pf-shuffle { animation: shufPulse 1.1s ease-in-out infinite; }
+.picks-rolling .pf-tag,
+.picks-rolling .picks-foot { opacity: 0; }
+@keyframes shufPulse { 0%, 100% { opacity: .72; } 50% { opacity: 1; } }
+.pk-row.pk-locked { animation: pkLock .5s cubic-bezier(.2,.85,.3,1); }
+@keyframes pkLock {
+  0%   { transform: scale(1.1); border-color: var(--value-gold);
+         box-shadow: 0 0 2vmin rgba(245,197,24,.6); background: rgba(245,197,24,.16); }
+  100% { transform: scale(1); border-color: rgba(255,204,0,.35);
+         box-shadow: none; background: rgba(0,0,0,.28); }
+}
+.pf-name.pk-pop { animation: pfSettle .5s cubic-bezier(.2,.85,.3,1); }
+@keyframes pfSettle { 0% { transform: scale(1.12); } 100% { transform: scale(1); } }
 
 /* ---- "(team) has phoned grandma!" — a brief banner over whatever's showing ---
    Above the curtain and the ⛶ button (a deliberate host action always lands),
@@ -447,8 +486,13 @@ body.display.is-fullscreen .fs-prompt { display: none; }
   font-size: 7.4vw; line-height: 1.04; max-width: 92vw; text-shadow: .05em .05em 0 #000, 0 0 8vmin rgba(6,12,233,.95);
   -webkit-text-stroke: 2px #000; }
 /* first-render sequence: settled header + name stay hidden until the big word has shrunk */
+/* the "decide your wagers" reminder, shown while the category is up and teams bet */
+.fj-wager-note { margin-top: 4.5vh; color: var(--value-gold); font-size: 2.5vw; font-weight: 700;
+  letter-spacing: .04em; line-height: 1.3; max-width: 84vw; text-shadow: .04em .04em 0 #000; }
 .fj-cat-word.anim-catword { animation: fjFadeIn .6s ease both; animation-delay: 3s; }
 .fj-cat-name.anim-catname { animation: fjCatNameIn .8s cubic-bezier(.2,.8,.2,1) both; animation-delay: 3.15s; }
+/* lands just after the category name settles, so it doesn't fight the reveal */
+.fj-wager-note.anim-wagernote { animation: fjFadeIn .7s ease both; animation-delay: 3.9s; }
 @keyframes fjFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fjCatNameIn { 0% { opacity: 0; transform: translateY(6vh) scale(.86); filter: blur(6px); }
   100% { opacity: 1; transform: none; filter: blur(0); } }
